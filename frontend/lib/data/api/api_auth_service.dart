@@ -188,6 +188,24 @@ class ApiAuthService extends AuthService {
   }
 
   @override
+  Future<void> resendEmailCode({required String email, required bool recovery}) async {
+    await _guard(() async {
+      final trimmed = email.trim();
+      if (trimmed.isEmpty || !trimmed.contains('@')) {
+        throw const AppException('Enter a valid email.');
+      }
+      if (recovery) {
+        await _supabase.auth.resetPasswordForEmail(trimmed);
+        return;
+      }
+      await _supabase.auth.signInWithOtp(
+        email: trimmed,
+        shouldCreateUser: true,
+      );
+    });
+  }
+
+  @override
   Future<void> setNewPassword({required String password}) async {
     await _guard(() async {
       if (password.length < 8) {

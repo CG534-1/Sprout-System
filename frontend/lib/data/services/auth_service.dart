@@ -37,6 +37,8 @@ abstract class AuthService extends ChangeNotifier {
 
   Future<void> confirmRecoveryCode({required String email, required String code});
 
+  Future<void> resendEmailCode({required String email, required bool recovery});
+
   Future<void> setNewPassword({required String password});
 
   /// Returns true when the account exists but the email still needs confirming.

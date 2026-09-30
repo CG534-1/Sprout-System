@@ -67,6 +67,15 @@ class MockAuthService extends AuthService {
   }
 
   @override
+  Future<void> resendEmailCode({required String email, required bool recovery}) async {
+    await _store.pause();
+    final trimmed = email.trim();
+    if (trimmed.isEmpty || !trimmed.contains('@')) {
+      throw const AppException('Enter a valid email.');
+    }
+  }
+
+  @override
   Future<void> setNewPassword({required String password}) async {
     await _store.pause();
     if (password.length < 8) throw const AppException('Use at least 8 characters.');
