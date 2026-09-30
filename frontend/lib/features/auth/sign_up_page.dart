@@ -1006,7 +1006,7 @@ class _InitialsChoice extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(6),
             child: DecoratedBox(
-              decoration: const BoxDecoration(color: AppColors.field, shape: BoxShape.circle),
+              decoration: BoxDecoration(color: AppColors.field, shape: BoxShape.circle),
               child: Center(
                 child: Text(
                   initials.isEmpty ? 'None' : initials,
