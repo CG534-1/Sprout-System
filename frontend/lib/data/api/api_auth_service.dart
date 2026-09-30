@@ -20,12 +20,12 @@ class ApiAuthService extends AuthService {
   var _splashPlayedThisLaunch = false;
   var _onboardingComplete = false;
   var _pendingSignup = false;
+  var _resettingPassword = false;
   String? _pendingFirst;
   String? _pendingLast;
   String? _pendingEmail;
   StreamSubscription<AuthState>? _authSub;
 
-  static const _apkConfirmRedirect = 'sprout://onboarding';
   static const _splashKey = 'sprout.splash_seen';
   static const _onboardingKey = 'sprout.onboarding_complete';
   static const _pendingOnboardingUserKey = 'sprout.pending_onboarding_user';
@@ -50,6 +50,9 @@ class ApiAuthService extends AuthService {
 
   @override
   String? get pendingEmail => _pendingEmail;
+
+  @override
+  bool get resettingPassword => _resettingPassword;
 
   @override
   Future<void> restore() async {
@@ -141,7 +144,6 @@ class ApiAuthService extends AuthService {
       await _supabase.auth.signInWithOtp(
         email: trimmedEmail,
         shouldCreateUser: true,
-        emailRedirectTo: kIsWeb ? '${Uri.base.origin}/#/onboarding' : _apkConfirmRedirect,
         data: {
           'name': '$first $last',
           'first_name': first,
@@ -149,6 +151,51 @@ class ApiAuthService extends AuthService {
           'signup_pending': true,
         },
       );
+    });
+  }
+
+  @override
+  Future<void> confirmEmailCode({required String email, required String code}) async {
+    await _guard(() async {
+      final token = code.trim();
+      if (token.length != 6 || int.tryParse(token) == null) {
+        throw const AppException('Enter the 6-digit code from your email.');
+      }
+      await _supabase.auth.verifyOTP(
+        email: email.trim(),
+        token: token,
+        type: OtpType.email,
+      );
+      await _adoptSession();
+    });
+  }
+
+  @override
+  Future<void> confirmRecoveryCode({required String email, required String code}) async {
+    await _guard(() async {
+      final token = code.trim();
+      if (token.length != 6 || int.tryParse(token) == null) {
+        throw const AppException('Enter the 6-digit code from your email.');
+      }
+      await _supabase.auth.verifyOTP(
+        email: email.trim(),
+        token: token,
+        type: OtpType.recovery,
+      );
+      _resettingPassword = true;
+      notifyListeners();
+    });
+  }
+
+  @override
+  Future<void> setNewPassword({required String password}) async {
+    await _guard(() async {
+      if (password.length < 8) {
+        throw const AppException('Use at least 8 characters.');
+      }
+      await _supabase.auth.updateUser(UserAttributes(password: password));
+      _resettingPassword = false;
+      await _adoptSession();
     });
   }
 
@@ -201,7 +248,7 @@ class ApiAuthService extends AuthService {
         final message = error.message.toLowerCase();
         if (message.contains('already') || message.contains('registered')) {
           throw const AppException(
-            'Open the confirmation link in your email, then create your password.',
+            'Enter the code from your email, then create your password.',
           );
         }
         rethrow;

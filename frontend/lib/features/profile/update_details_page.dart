@@ -72,7 +72,6 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
       builder: (context) => _AvatarSheet(
         selected: _photo == null ? _avatar : -1,
         photo: _photo,
-        initials: sproutInitials(_name.text),
       ),
     );
     if (picked == null || !mounted) return;
@@ -226,11 +225,10 @@ class _AvatarChoice {
 }
 
 class _AvatarSheet extends StatelessWidget {
-  const _AvatarSheet({required this.selected, this.photo, this.initials = ''});
+  const _AvatarSheet({required this.selected, this.photo});
 
   final int selected;
   final Uint8List? photo;
-  final String initials;
 
   Future<void> _upload(BuildContext context) async {
     final file = await ImagePicker().pickImage(
@@ -270,32 +268,14 @@ class _AvatarSheet extends StatelessWidget {
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: _avatars.length + 2,
+            itemCount: _avatars.length + 1,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 3,
               mainAxisSpacing: 12,
               crossAxisSpacing: 12,
             ),
             itemBuilder: (context, index) {
-              if (index == 0) {
-                return GestureDetector(
-                  onTap: () => Navigator.pop(context, const _AvatarChoice.none()),
-                  child: _Face(
-                    selected: selected < 0 && photo == null,
-                    child: Center(
-                      child: Text(
-                        initials.isEmpty ? 'None' : initials,
-                        style: GoogleFonts.fraunces(
-                          fontSize: initials.isEmpty ? 14 : 18,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.sproutGreen,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }
-              if (index == _avatars.length + 1) {
+              if (index == _avatars.length) {
                 return GestureDetector(
                   onTap: () => _upload(context),
                   child: _Face(
@@ -320,15 +300,26 @@ class _AvatarSheet extends StatelessWidget {
                   ),
                 );
               }
-              final memoji = index - 1;
               return GestureDetector(
-                onTap: () => Navigator.pop(context, _AvatarChoice.memoji(memoji)),
+                onTap: () => Navigator.pop(context, _AvatarChoice.memoji(index)),
                 child: _Face(
-                  selected: memoji == selected,
-                  child: Image.asset(_avatars[memoji], fit: BoxFit.contain),
+                  selected: index == selected,
+                  child: Image.asset(_avatars[index], fit: BoxFit.contain),
                 ),
               );
             },
+          ),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: () => Navigator.pop(context, const _AvatarChoice.none()),
+            child: Text(
+              'Skip, do this later',
+              style: GoogleFonts.dmSans(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.sproutGreen,
+              ),
+            ),
           ),
         ],
       ),

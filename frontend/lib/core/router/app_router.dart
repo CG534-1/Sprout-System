@@ -2,6 +2,8 @@ import 'package:go_router/go_router.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/forgot_password_page.dart';
+import 'package:sprout/features/auth/otp_page.dart';
+import 'package:sprout/features/auth/reset_password_page.dart';
 import 'package:sprout/features/auth/sign_in_page.dart';
 import 'package:sprout/features/auth/sign_up_page.dart';
 import 'package:sprout/features/care/my_care_page.dart';
@@ -40,6 +42,17 @@ GoRouter createAppRouter(AuthService auth) {
         builder: (context, state) => const ForgotPasswordPage(),
       ),
       GoRoute(
+        path: AppRoutes.verifyEmail,
+        builder: (context, state) => OtpPage(
+          email: state.uri.queryParameters['email'] ?? '',
+          purpose: state.uri.queryParameters['purpose'] ?? 'signup',
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.resetPassword,
+        builder: (context, state) => const ResetPasswordPage(),
+      ),
+      GoRoute(
         path: AppRoutes.today,
         builder: (context, state) => const TodayPage(),
       ),
@@ -68,7 +81,9 @@ String? _redirect(AuthService auth, String location) {
   final authenticating =
       location == AppRoutes.signIn ||
       location == AppRoutes.signUp ||
-      location == AppRoutes.forgotPassword;
+      location == AppRoutes.forgotPassword ||
+      location == AppRoutes.verifyEmail ||
+      location == AppRoutes.resetPassword;
 
   if (!auth.splashSeen) {
     if (location == AppRoutes.splash) return null;
@@ -78,6 +93,11 @@ String? _redirect(AuthService auth, String location) {
   if (!auth.onboardingComplete) {
     if (onboarding) return null;
     return AppRoutes.onboarding;
+  }
+
+  if (auth.resettingPassword) {
+    if (location == AppRoutes.resetPassword) return null;
+    return AppRoutes.resetPassword;
   }
 
   if (auth.pendingSignup) {
@@ -90,7 +110,10 @@ String? _redirect(AuthService auth, String location) {
     return AppRoutes.signIn;
   }
 
-  if (location == AppRoutes.forgotPassword && auth.isSignedIn) return null;
+  if (auth.isSignedIn &&
+      (location == AppRoutes.forgotPassword || location == AppRoutes.verifyEmail)) {
+    return null;
+  }
 
   if (authenticating || location == AppRoutes.splash || onboarding) {
     return AppRoutes.today;

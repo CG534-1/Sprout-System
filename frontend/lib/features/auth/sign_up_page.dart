@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+﻿import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -113,7 +113,6 @@ class _SignUpPageState extends State<SignUpPage> {
       builder: (context) => _AvatarSheet(
         selected: _photo == null ? _avatar : -1,
         photo: _photo,
-        initials: _initials,
       ),
     );
     if (picked == null || !mounted) return;
@@ -149,7 +148,8 @@ class _SignUpPageState extends State<SignUpPage> {
           email: _email.text,
         );
         if (!mounted) return;
-        await _showConfirmEmail();
+        final email = Uri.encodeQueryComponent(_email.text.trim());
+        context.push('${AppRoutes.verifyEmail}?email=$email&purpose=signup');
       } on AppException catch (error) {
         if (!mounted) return;
         setState(() => _emailError = error.message);
@@ -174,63 +174,6 @@ class _SignUpPageState extends State<SignUpPage> {
     if (_step == 4) return _level != null;
     if (_step == 5) return _passwordReady && _agreed && !_submitting;
     return true;
-  }
-
-  Future<void> _showConfirmEmail() {
-    final email = _email.text.trim();
-    return showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return Dialog(
-          backgroundColor: AppColors.onboardingPaper,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Confirm your email',
-                  style: GoogleFonts.fraunces(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.ink,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'We sent a confirmation link to $email. Open that link to continue into onboarding. Choosing a password is what creates your account.',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 14,
-                    height: 1.45,
-                    color: AppColors.onboardingBody,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
-                    child: Text(
-                      'OK',
-                      style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   String get _initials {
@@ -266,7 +209,7 @@ class _SignUpPageState extends State<SignUpPage> {
       if (!mounted) return;
       if (needsConfirmation) {
         setState(() {
-          _passwordError = 'Open the confirmation link in your email, then create your password.';
+          _passwordError = 'Enter the code from your email, then create your password.';
           _submitting = false;
         });
         return;
@@ -920,11 +863,10 @@ class _AvatarPick {
 }
 
 class _AvatarSheet extends StatelessWidget {
-  const _AvatarSheet({required this.selected, this.photo, this.initials = ''});
+  const _AvatarSheet({required this.selected, this.photo});
 
   final int selected;
   final Uint8List? photo;
-  final String initials;
 
   Future<void> _upload(BuildContext context) async {
     final file = await ImagePicker().pickImage(
@@ -973,24 +915,14 @@ class _AvatarSheet extends StatelessWidget {
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: _avatars.length + 2,
+              itemCount: _avatars.length + 1,
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
                 mainAxisSpacing: 10,
                 crossAxisSpacing: 8,
               ),
               itemBuilder: (context, index) {
-                if (index == 0) {
-                  return GestureDetector(
-                    key: const Key('no-avatar'),
-                    onTap: () => Navigator.pop(context, const _AvatarPick.none()),
-                    child: _InitialsChoice(
-                      initials: initials,
-                      selected: selected < 0 && photo == null,
-                    ),
-                  );
-                }
-                if (index == _avatars.length + 1) {
+                if (index == _avatars.length) {
                   return GestureDetector(
                     key: const Key('upload-avatar'),
                     onTap: () => _upload(context),
@@ -1000,58 +932,33 @@ class _AvatarSheet extends StatelessWidget {
                     ),
                   );
                 }
-                final memoji = index - 1;
                 return GestureDetector(
-                  onTap: () => Navigator.pop(context, _AvatarPick.memoji(memoji)),
+                  onTap: () => Navigator.pop(context, _AvatarPick.memoji(index)),
                   child: _AvatarChoice(
-                    asset: _avatars[memoji],
-                    selected: memoji == selected,
+                    asset: _avatars[index],
+                    selected: index == selected,
                   ),
                 );
               },
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _InitialsChoice extends StatelessWidget {
-  const _InitialsChoice({required this.initials, required this.selected});
-
-  final String initials;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        CustomPaint(
-          painter: _DashedRingPainter(
-            selected ? AppColors.sproutGreen : AppColors.dotIdle,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(6),
-            child: DecoratedBox(
-              decoration: BoxDecoration(color: AppColors.field, shape: BoxShape.circle),
-              child: Center(
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () => Navigator.pop(context, const _AvatarPick.none()),
                 child: Text(
-                  initials.isEmpty ? 'None' : initials,
-                  style: GoogleFonts.fraunces(
-                    fontSize: initials.isEmpty ? 14 : 18,
-                    fontWeight: FontWeight.w600,
+                  'Skip, do this later',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
                     color: AppColors.sproutGreen,
                   ),
                 ),
               ),
             ),
-          ),
+          ],
         ),
-        if (selected)
-          const Positioned(top: -2, right: 2, child: _AvatarCheck()),
-      ],
+      ),
     );
   }
 }
@@ -1188,14 +1095,16 @@ class _MemojiFace extends StatelessWidget {
             : asset != null
             ? Image.asset(asset!, fit: BoxFit.contain)
             : Center(
-                child: Text(
-                  initials,
-                  style: GoogleFonts.fraunces(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.sproutGreen,
-                  ),
-                ),
+                child: initials.isEmpty
+                    ? const Icon(Icons.person_outline, color: AppColors.sproutGreen, size: 36)
+                    : Text(
+                        initials,
+                        style: GoogleFonts.fraunces(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.sproutGreen,
+                        ),
+                      ),
               ),
       ),
     );

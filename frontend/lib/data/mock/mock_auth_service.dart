@@ -53,6 +53,40 @@ class MockAuthService extends AuthService {
   }
 
   @override
+  Future<void> confirmEmailCode({required String email, required String code}) async {
+    await _store.pause();
+    _requireCode(email, code);
+  }
+
+  @override
+  Future<void> confirmRecoveryCode({required String email, required String code}) async {
+    await _store.pause();
+    _requireCode(email, code);
+    _resettingPassword = true;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> setNewPassword({required String password}) async {
+    await _store.pause();
+    if (password.length < 8) throw const AppException('Use at least 8 characters.');
+    _resettingPassword = false;
+    notifyListeners();
+  }
+
+  var _resettingPassword = false;
+
+  @override
+  bool get resettingPassword => _resettingPassword;
+
+  void _requireCode(String email, String code) {
+    final token = code.trim();
+    if (email.trim().isEmpty || token.length != 6 || int.tryParse(token) == null) {
+      throw const AppException('Enter the 6-digit code from your email.');
+    }
+  }
+
+  @override
   Future<bool> signUp({
     required String name,
     required String email,

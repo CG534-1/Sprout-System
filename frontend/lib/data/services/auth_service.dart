@@ -21,6 +21,8 @@ abstract class AuthService extends ChangeNotifier {
 
   String? get pendingEmail => null;
 
+  bool get resettingPassword => false;
+
   void markSplashSeen();
 
   Future<void> signIn({required String email, required String password});
@@ -30,6 +32,12 @@ abstract class AuthService extends ChangeNotifier {
     required String lastName,
     required String email,
   });
+
+  Future<void> confirmEmailCode({required String email, required String code});
+
+  Future<void> confirmRecoveryCode({required String email, required String code});
+
+  Future<void> setNewPassword({required String password});
 
   /// Returns true when the account exists but the email still needs confirming.
   Future<bool> signUp({

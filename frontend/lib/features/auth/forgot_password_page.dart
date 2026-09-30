@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:sprout/core/app_exception.dart';
+import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/auth_validators.dart';
@@ -18,7 +19,6 @@ class ForgotPasswordPage extends StatefulWidget {
 class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   final _email = TextEditingController();
   var _submitting = false;
-  var _sent = false;
   String? _error;
 
   @override
@@ -59,10 +59,9 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     try {
       await context.read<AuthService>().sendPasswordReset(email: _email.text);
       if (!mounted) return;
-      setState(() {
-        _sent = true;
-        _submitting = false;
-      });
+      final email = Uri.encodeQueryComponent(_email.text.trim());
+      context.push('${AppRoutes.verifyEmail}?email=$email&purpose=recovery');
+      setState(() => _submitting = false);
     } on AppException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -74,7 +73,6 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
 
   @override
   Widget build(BuildContext context) {
-    final signedIn = context.watch<AuthService>().isSignedIn;
     return Focus(
       autofocus: true,
       child: Scaffold(
@@ -100,37 +98,30 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                     const AuthHeadline(lead: 'Reset your', accent: 'password.'),
                     const SizedBox(height: 8),
                     Text(
-                      _sent
-                          ? 'Check your inbox for a reset link.'
-                          : 'Enter the email you use for Sprout.',
+                      'Enter the email you use for Sprout. We will send a code.',
                       style: GoogleFonts.dmSans(
                         fontSize: 14,
                         height: 20 / 14,
                         color: AppColors.onboardingBody,
                       ),
                     ),
-                    if (!_sent) ...[
-                      const SizedBox(height: 22),
-                      AuthField(
+                    const SizedBox(height: 22),
+                    AuthField(
                         label: 'EMAIL',
                         controller: _email,
                         hint: 'you@example.com',
                         error: _error,
                         keyboardType: TextInputType.emailAddress,
                       ),
-                    ],
                   ],
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.only(left: 6),
                 child: SlabButton(
-                  label: _sent
-                      ? (signedIn ? 'Back to profile' : 'Back to sign in')
-                      : (_submitting ? 'Sending' : 'Send reset link'),
-                  enabled: _sent ||
-                      (_email.text.trim().isNotEmpty && !_submitting),
-                  onPressed: _sent ? () => context.pop() : _submit,
+                  label: _submitting ? 'Sending' : 'Send code',
+                  enabled: _email.text.trim().isNotEmpty && !_submitting,
+                  onPressed: _submit,
                 ),
               ),
             ],
