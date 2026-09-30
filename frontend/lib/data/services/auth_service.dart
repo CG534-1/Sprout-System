@@ -1,0 +1,43 @@
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
+import 'package:sprout/data/models/user_profile.dart';
+
+abstract class AuthService extends ChangeNotifier {
+  UserProfile? get currentUser;
+
+  bool get isSignedIn => currentUser != null;
+
+  bool get onboardingComplete;
+
+  bool get splashSeen;
+
+  void markSplashSeen();
+
+  Future<void> signIn({required String email, required String password});
+
+  Future<void> signUp({
+    required String name,
+    required String email,
+    required String password,
+    String? avatarUrl,
+    Uint8List? avatarBytes,
+  });
+
+  Future<void> updateDetails({
+    required String name,
+    required String email,
+    String? avatarUrl,
+    Uint8List? avatarBytes,
+  });
+
+  Future<void> sendPasswordReset({required String email});
+
+  Future<void> signOut();
+
+  Future<void> deleteAccount();
+
+  Future<void> restore() async {}
+
+  void completeOnboarding();
+}
