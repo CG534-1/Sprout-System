@@ -40,6 +40,7 @@ class _SignUpPageState extends State<SignUpPage> {
   var _obscure = true;
   var _agreed = false;
   var _submitting = false;
+  var _appliedPending = false;
 
   @override
   void initState() {
@@ -49,6 +50,16 @@ class _SignUpPageState extends State<SignUpPage> {
     _email.addListener(_refresh);
     _password.addListener(_refresh);
     _leaveFieldsAlone();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _appliedPending) return;
+      final auth = context.read<AuthService>();
+      if (!auth.pendingSignup) return;
+      _appliedPending = true;
+      _step = 1;
+      _first.text = auth.pendingFirst ?? '';
+      _last.text = auth.pendingLast ?? '';
+      _email.text = auth.pendingEmail ?? '';
+    });
   }
 
   void _leaveFieldsAlone() {
@@ -116,7 +127,8 @@ class _SignUpPageState extends State<SignUpPage> {
     });
   }
 
-  void _next() {
+  Future<void> _next() async {
+    if (_submitting) return;
     if (_step == 0) {
       final first = _first.text.trim().isEmpty ? 'Enter your first name' : null;
       final last = _last.text.trim().isEmpty ? 'Enter your last name' : null;
@@ -129,6 +141,22 @@ class _SignUpPageState extends State<SignUpPage> {
         });
         return;
       }
+      setState(() => _submitting = true);
+      try {
+        await context.read<AuthService>().requestEmailConfirmation(
+          firstName: _first.text,
+          lastName: _last.text,
+          email: _email.text,
+        );
+        if (!mounted) return;
+        await _showConfirmEmail();
+      } on AppException catch (error) {
+        if (!mounted) return;
+        setState(() => _emailError = error.message);
+      } finally {
+        if (mounted) setState(() => _submitting = false);
+      }
+      return;
     }
     setState(() => _step += 1);
     _leaveFieldsAlone();
@@ -136,7 +164,8 @@ class _SignUpPageState extends State<SignUpPage> {
 
   bool get _canContinue {
     if (_step == 0) {
-      return _first.text.trim().isNotEmpty &&
+      return !_submitting &&
+          _first.text.trim().isNotEmpty &&
           _last.text.trim().isNotEmpty &&
           _email.text.trim().isNotEmpty;
     }
@@ -172,7 +201,7 @@ class _SignUpPageState extends State<SignUpPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'We sent a link to $email. Open it to confirm, then continue into onboarding.',
+                  'We sent a confirmation link to $email. Open that link to continue into onboarding. Choosing a password is what creates your account.',
                   style: GoogleFonts.dmSans(
                     fontSize: 14,
                     height: 1.45,
@@ -191,7 +220,7 @@ class _SignUpPageState extends State<SignUpPage> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     ),
                     child: Text(
-                      'Continue',
+                      'OK',
                       style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -236,10 +265,10 @@ class _SignUpPageState extends State<SignUpPage> {
       );
       if (!mounted) return;
       if (needsConfirmation) {
-        await _showConfirmEmail();
-        if (!mounted) return;
-        context.read<AuthService>().reopenOnboarding();
-        context.go(AppRoutes.onboarding);
+        setState(() {
+          _passwordError = 'Open the confirmation link in your email, then create your password.';
+          _submitting = false;
+        });
         return;
       }
       context.go(AppRoutes.today);
@@ -329,7 +358,7 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 
   String get _actionLabel {
-    if (_step == 0) return 'Get Started';
+    if (_step == 0) return _submitting ? 'Sending' : 'Get Started';
     if (_step == 5) return _submitting ? 'Creating' : 'Create Account';
     return 'Continue';
   }

@@ -12,9 +12,24 @@ abstract class AuthService extends ChangeNotifier {
 
   bool get splashSeen;
 
+  /// Email is confirmed, and the account is still waiting for a password.
+  bool get pendingSignup => false;
+
+  String? get pendingFirst => null;
+
+  String? get pendingLast => null;
+
+  String? get pendingEmail => null;
+
   void markSplashSeen();
 
   Future<void> signIn({required String email, required String password});
+
+  Future<void> requestEmailConfirmation({
+    required String firstName,
+    required String lastName,
+    required String email,
+  });
 
   /// Returns true when the account exists but the email still needs confirming.
   Future<bool> signUp({

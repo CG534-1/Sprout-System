@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/data/api/api_client.dart';
+import 'package:sprout/data/api/web_tab.dart';
 import 'package:sprout/data/models/user_profile.dart';
 import 'package:sprout/data/services/auth_service.dart';
 
@@ -15,20 +16,40 @@ class ApiAuthService extends AuthService {
   final ApiClient _client;
   UserProfile? _user;
   var _splashSeen = false;
+  var _replaySplashOnLaunch = false;
+  var _splashPlayedThisLaunch = false;
   var _onboardingComplete = false;
+  var _pendingSignup = false;
+  String? _pendingFirst;
+  String? _pendingLast;
+  String? _pendingEmail;
   StreamSubscription<AuthState>? _authSub;
 
+  static const _apkConfirmRedirect = 'sprout://onboarding';
   static const _splashKey = 'sprout.splash_seen';
   static const _onboardingKey = 'sprout.onboarding_complete';
+  static const _pendingOnboardingUserKey = 'sprout.pending_onboarding_user';
 
   @override
   UserProfile? get currentUser => _user;
 
   @override
-  bool get splashSeen => _splashSeen;
+  bool get splashSeen => _replaySplashOnLaunch ? _splashPlayedThisLaunch : _splashSeen;
 
   @override
   bool get onboardingComplete => _onboardingComplete;
+
+  @override
+  bool get pendingSignup => _pendingSignup;
+
+  @override
+  String? get pendingFirst => _pendingFirst;
+
+  @override
+  String? get pendingLast => _pendingLast;
+
+  @override
+  String? get pendingEmail => _pendingEmail;
 
   @override
   Future<void> restore() async {
@@ -36,18 +57,14 @@ class ApiAuthService extends AuthService {
     _splashSeen = prefs.getBool(_splashKey) ?? false;
     _onboardingComplete = prefs.getBool(_onboardingKey) ?? false;
     _authSub = _supabase.auth.onAuthStateChange.listen((event) async {
-      if (event.session == null) {
-        if (_user != null) {
-          _user = null;
-          notifyListeners();
-        }
-        return;
-      }
-      await _loadProfile();
+      await _adoptSession();
     });
     if (_supabase.auth.currentSession != null) {
-      await _loadProfile();
+      await _adoptSession();
     }
+    final closedPage = kIsWeb && !webTabStillOpen();
+    if (kIsWeb) markWebTabOpen();
+    _replaySplashOnLaunch = _user != null && (!kIsWeb || closedPage);
     notifyListeners();
   }
 
@@ -59,6 +76,12 @@ class ApiAuthService extends AuthService {
 
   @override
   void markSplashSeen() {
+    if (_replaySplashOnLaunch) {
+      if (_splashPlayedThisLaunch) return;
+      _splashPlayedThisLaunch = true;
+      notifyListeners();
+      return;
+    }
     if (_splashSeen) return;
     _splashSeen = true;
     notifyListeners();
@@ -70,7 +93,13 @@ class ApiAuthService extends AuthService {
     if (_onboardingComplete) return;
     _onboardingComplete = true;
     notifyListeners();
-    SharedPreferences.getInstance().then((prefs) => prefs.setBool(_onboardingKey, true));
+    final userId = _supabase.auth.currentUser?.id;
+    SharedPreferences.getInstance().then((prefs) async {
+      await prefs.setBool(_onboardingKey, true);
+      if (_pendingSignup && userId != null) {
+        await prefs.setString(_pendingOnboardingUserKey, userId);
+      }
+    });
   }
 
   @override
@@ -96,6 +125,34 @@ class ApiAuthService extends AuthService {
   }
 
   @override
+  Future<void> requestEmailConfirmation({
+    required String firstName,
+    required String lastName,
+    required String email,
+  }) async {
+    await _guard(() async {
+      final first = firstName.trim();
+      final last = lastName.trim();
+      final trimmedEmail = email.trim();
+      if (first.isEmpty || last.isEmpty) throw const AppException('Enter your name.');
+      if (trimmedEmail.isEmpty || !trimmedEmail.contains('@')) {
+        throw const AppException('Enter a valid email.');
+      }
+      await _supabase.auth.signInWithOtp(
+        email: trimmedEmail,
+        shouldCreateUser: true,
+        emailRedirectTo: kIsWeb ? '${Uri.base.origin}/#/onboarding' : _apkConfirmRedirect,
+        data: {
+          'name': '$first $last',
+          'first_name': first,
+          'last_name': last,
+          'signup_pending': true,
+        },
+      );
+    });
+  }
+
+  @override
   Future<bool> signUp({
     required String name,
     required String email,
@@ -107,15 +164,48 @@ class ApiAuthService extends AuthService {
     await _guard(() async {
       final trimmedName = name.trim();
       if (trimmedName.isEmpty) throw const AppException('Enter your name.');
-      final response = await _supabase.auth.signUp(
-        email: email.trim(),
-        password: password,
-        data: {
-          'name': trimmedName,
-          if (avatarUrl != null) 'avatar': avatarUrl,
-        },
-        emailRedirectTo: kIsWeb ? Uri.base.origin : null,
-      );
+      if (_supabase.auth.currentSession != null) {
+        await _supabase.auth.updateUser(
+          UserAttributes(
+            password: password,
+            data: {
+              'name': trimmedName,
+              'signup_pending': false,
+              'password_set': true,
+              if (avatarUrl != null) 'avatar': avatarUrl,
+            },
+          ),
+        );
+        await _saveDetails(
+          name: trimmedName,
+          email: email.trim(),
+          avatarUrl: avatarUrl,
+          avatarBytes: avatarBytes,
+        );
+        return;
+      }
+      AuthResponse response;
+      try {
+        response = await _supabase.auth.signUp(
+          email: email.trim(),
+          password: password,
+          data: {
+            'name': trimmedName,
+            'signup_pending': false,
+            'password_set': true,
+            if (avatarUrl != null) 'avatar': avatarUrl,
+          },
+          emailRedirectTo: kIsWeb ? Uri.base.origin : null,
+        );
+      } on AuthException catch (error) {
+        final message = error.message.toLowerCase();
+        if (message.contains('already') || message.contains('registered')) {
+          throw const AppException(
+            'Open the confirmation link in your email, then create your password.',
+          );
+        }
+        rethrow;
+      }
       if (response.session == null) {
         needsConfirmation = true;
         return;
@@ -210,14 +300,61 @@ class ApiAuthService extends AuthService {
       if (avatarPath == null && avatarUrl != null) 'avatarUrl': avatarUrl,
     };
     final data = await _client.send('PATCH', '/api/me', body: body);
+    _pendingSignup = false;
     _user = UserProfile.fromJson(Map<String, dynamic>.from(data as Map));
     notifyListeners();
   }
 
+  Future<void> _adoptSession() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      _pendingSignup = false;
+      _pendingFirst = null;
+      _pendingLast = null;
+      _pendingEmail = null;
+      if (_user != null) {
+        _user = null;
+        notifyListeners();
+      }
+      return;
+    }
+    final meta = user.userMetadata ?? {};
+    final pending = _flag(meta['signup_pending']) && !_flag(meta['password_set']);
+    if (pending) {
+      _user = null;
+      _pendingSignup = true;
+      _pendingFirst = meta['first_name']?.toString();
+      _pendingLast = meta['last_name']?.toString();
+      if ((_pendingFirst == null || _pendingFirst!.isEmpty) && meta['name'] != null) {
+        final parts = meta['name'].toString().trim().split(RegExp(r'\s+'));
+        _pendingFirst = parts.first;
+        _pendingLast = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+      }
+      _pendingEmail = user.email;
+      final prefs = await SharedPreferences.getInstance();
+      final seenFor = prefs.getString(_pendingOnboardingUserKey);
+      if (seenFor != user.id && _onboardingComplete) {
+        _onboardingComplete = false;
+        await prefs.setBool(_onboardingKey, false);
+      }
+      notifyListeners();
+      return;
+    }
+    _pendingSignup = false;
+    await _loadProfile();
+  }
+
+  bool _flag(Object? value) => value == true || value == 'true';
+
   Future<void> _loadProfile() async {
-    final data = await _client.send('GET', '/api/me');
-    _user = UserProfile.fromJson(Map<String, dynamic>.from(data as Map));
-    notifyListeners();
+    try {
+      final data = await _client.send('GET', '/api/me');
+      _user = UserProfile.fromJson(Map<String, dynamic>.from(data as Map));
+      notifyListeners();
+    } on AppException {
+      _user = null;
+      notifyListeners();
+    }
   }
 
   Future<void> _guard(Future<void> Function() action) async {

@@ -37,6 +37,22 @@ class MockAuthService extends AuthService {
   }
 
   @override
+  Future<void> requestEmailConfirmation({
+    required String firstName,
+    required String lastName,
+    required String email,
+  }) async {
+    await _store.pause();
+    if (firstName.trim().isEmpty || lastName.trim().isEmpty) {
+      throw const AppException('Enter your name.');
+    }
+    final trimmed = email.trim();
+    if (trimmed.isEmpty || !trimmed.contains('@')) {
+      throw const AppException('Enter a valid email.');
+    }
+  }
+
+  @override
   Future<bool> signUp({
     required String name,
     required String email,

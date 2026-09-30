@@ -162,15 +162,9 @@ declare
   person_email text := coalesce(new.email, '');
   person_avatar text := nullif(new.raw_user_meta_data->>'avatar', '');
 begin
-  if new.email_confirmed_at is not null then
-    insert into public.profiles (id, name, email, avatar_ref)
-    values (new.id, person_name, person_email, person_avatar)
-    on conflict (id) do nothing;
-  else
-    insert into public.pending_profiles (id, name, email, avatar_ref)
-    values (new.id, person_name, person_email, person_avatar)
-    on conflict (id) do nothing;
-  end if;
+  insert into public.pending_profiles (id, name, email, avatar_ref)
+  values (new.id, person_name, person_email, person_avatar)
+  on conflict (id) do nothing;
   return new;
 end;
 $$;
@@ -183,19 +177,16 @@ set search_path = public
 as $$
 begin
   if old.email_confirmed_at is null and new.email_confirmed_at is not null then
-    insert into public.profiles (id, name, email, avatar_ref)
-    select id, name, email, avatar_ref
-    from public.pending_profiles
-    where id = new.id
-    on conflict (id) do nothing;
-    insert into public.profiles (id, name, email)
+    insert into public.pending_profiles (id, name, email, avatar_ref)
     values (
       new.id,
       coalesce(new.raw_user_meta_data->>'name', ''),
-      coalesce(new.email, '')
+      coalesce(new.email, ''),
+      nullif(new.raw_user_meta_data->>'avatar', '')
     )
-    on conflict (id) do nothing;
-    delete from public.pending_profiles where id = new.id;
+    on conflict (id) do update
+      set email = excluded.email,
+          name = excluded.name;
   end if;
   return new;
 end;

@@ -80,10 +80,11 @@ export function createApp() {
       if (!name) throw httpError(400, 'Enter your name.');
       if (!email.includes('@')) throw httpError(400, 'Enter a valid email.');
       const avatarRef = req.body.avatarPath ?? req.body.avatarUrl ?? undefined;
-      const patch = { name, email };
+      const patch = { id: req.user.id, name, email };
       if (avatarRef !== undefined) patch.avatar_ref = avatarRef || null;
-      const { error } = await req.db.from('profiles').update(patch).eq('id', req.user.id);
+      const { error } = await req.db.from('profiles').upsert(patch, { onConflict: 'id' });
       if (error) throw error;
+      await req.db.from('pending_profiles').delete().eq('id', req.user.id);
       res.json(await profileJson(req));
     } catch (error) {
       next(error);
@@ -528,6 +529,9 @@ async function profileJson(req) {
   let { data, error } = await req.db.from('profiles').select('*').eq('id', req.user.id).maybeSingle();
   if (error) throw error;
   if (!data) {
+    if (req.user.user_metadata?.password_set !== true) {
+      throw httpError(409, 'Choose a password to finish creating your account.');
+    }
     const created = await req.db
       .from('profiles')
       .insert({

@@ -80,6 +80,11 @@ String? _redirect(AuthService auth, String location) {
     return AppRoutes.onboarding;
   }
 
+  if (auth.pendingSignup) {
+    if (location == AppRoutes.signUp || location == AppRoutes.signIn) return null;
+    return AppRoutes.signUp;
+  }
+
   if (!auth.isSignedIn) {
     if (authenticating) return null;
     return AppRoutes.signIn;
