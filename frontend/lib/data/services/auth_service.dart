@@ -16,7 +16,8 @@ abstract class AuthService extends ChangeNotifier {
 
   Future<void> signIn({required String email, required String password});
 
-  Future<void> signUp({
+  /// Returns true when the account exists but the email still needs confirming.
+  Future<bool> signUp({
     required String name,
     required String email,
     required String password,
@@ -40,4 +41,6 @@ abstract class AuthService extends ChangeNotifier {
   Future<void> restore() async {}
 
   void completeOnboarding();
+
+  void reopenOnboarding();
 }

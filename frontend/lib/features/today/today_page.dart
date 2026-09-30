@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:sprout/core/theme/app_colors.dart';
+import 'package:sprout/core/widgets/person_avatar.dart';
 import 'package:sprout/core/widgets/sprout_check.dart';
 import 'package:sprout/data/models/care_enums.dart';
 import 'package:sprout/data/models/care_task.dart';
@@ -282,8 +283,6 @@ class _MemojiAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bytes = user?.avatarBytes;
-    final asset = user?.avatarUrl ?? 'assets/images/memoji_freckles.png';
     return Container(
       width: 44,
       height: 44,
@@ -293,11 +292,10 @@ class _MemojiAvatar extends StatelessWidget {
         border: Border.all(color: AppColors.splashTop, width: 2.5),
       ),
       child: ClipOval(
-        child: ColoredBox(
-          color: AppColors.field,
-          child: bytes != null
-              ? Image.memory(bytes, fit: BoxFit.cover)
-              : Image.asset(asset, fit: BoxFit.contain),
+        child: PersonAvatar(
+          name: user?.name ?? '',
+          avatarUrl: user?.avatarUrl,
+          avatarBytes: user?.avatarBytes,
         ),
       ),
     );

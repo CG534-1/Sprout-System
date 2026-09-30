@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:sprout/core/router/routes.dart';
+import 'package:sprout/core/widgets/person_avatar.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/theme/theme_controller.dart';
 import 'package:sprout/data/models/care_enums.dart';
@@ -854,8 +855,6 @@ class _AccountAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bytes = user?.avatarBytes;
-    final asset = user?.avatarUrl ?? 'assets/images/memoji_freckles.png';
     return Container(
       width: 60,
       height: 60,
@@ -865,9 +864,11 @@ class _AccountAvatar extends StatelessWidget {
         border: Border.all(color: const Color(0xFFDCFFE3), width: 3),
       ),
       child: ClipOval(
-        child: bytes != null
-            ? Image.memory(bytes, fit: BoxFit.cover)
-            : Image.asset(asset, fit: BoxFit.contain),
+        child: PersonAvatar(
+          name: user?.name ?? '',
+          avatarUrl: user?.avatarUrl,
+          avatarBytes: user?.avatarBytes,
+        ),
       ),
     );
   }

@@ -51,10 +51,10 @@ export function createApp() {
       }
       req.user = data.user;
       req.admin = admin;
-      await admin.from('user_settings').upsert(
-        { user_id: data.user.id, utc_offset_minutes: utcOffsetMinutes(req) },
-        { onConflict: 'user_id' },
-      );
+      await admin
+        .from('user_settings')
+        .update({ utc_offset_minutes: utcOffsetMinutes(req) })
+        .eq('user_id', data.user.id);
       req.db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
         accessToken: async () => token,
         auth: { persistSession: false, autoRefreshToken: false },
@@ -113,18 +113,6 @@ export function createApp() {
           .eq('user_id', req.user.id)
           .maybeSingle();
       if (error) throw error;
-      if (!data) {
-        const created = await req.db
-          .from('user_settings')
-          .upsert(
-            { user_id: req.user.id, utc_offset_minutes: utcOffsetMinutes(req) },
-            { onConflict: 'user_id' },
-          )
-          .select('*')
-          .single();
-        if (created.error) throw created.error;
-        data = created.data;
-      }
       res.json(settingsJson(data));
     } catch (error) {
       next(error);
@@ -550,10 +538,6 @@ async function profileJson(req) {
       .select('*')
       .single();
     if (created.error) throw created.error;
-    await req.db.from('user_settings').upsert(
-      { user_id: req.user.id, utc_offset_minutes: utcOffsetMinutes(req) },
-      { onConflict: 'user_id' },
-    );
     data = created.data;
   }
   return {
@@ -566,12 +550,12 @@ async function profileJson(req) {
 
 function settingsJson(row) {
   return {
-    reminders: row.reminders,
-    overdue: row.overdue,
-    summary: row.summary,
-    tips: row.tips,
-    preferred: row.preferred_slot,
-    lead: row.lead,
+    reminders: row?.reminders ?? true,
+    overdue: row?.overdue ?? true,
+    summary: row?.summary ?? true,
+    tips: row?.tips ?? false,
+    preferred: row?.preferred_slot ?? 'morning',
+    lead: row?.lead ?? '30 min before',
   };
 }
 

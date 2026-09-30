@@ -6,6 +6,14 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.pending_profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  name text not null default '',
+  email text not null default '',
+  avatar_ref text,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.user_settings (
   user_id uuid primary key references public.profiles (id) on delete cascade,
   reminders boolean not null default true,
@@ -97,6 +105,7 @@ create index if not exists tasks_due_idx on public.care_tasks (user_id, due_at);
 create index if not exists history_user_idx on public.care_history (user_id, completed_at desc);
 
 alter table public.profiles enable row level security;
+alter table public.pending_profiles enable row level security;
 alter table public.user_settings enable row level security;
 alter table public.plants enable row level security;
 alter table public.pets enable row level security;
@@ -106,6 +115,7 @@ alter table public.care_history enable row level security;
 alter table public.device_tokens enable row level security;
 
 drop policy if exists profiles_own on public.profiles;
+drop policy if exists pending_profiles_own on public.pending_profiles;
 drop policy if exists settings_own on public.user_settings;
 drop policy if exists plants_own on public.plants;
 drop policy if exists pets_own on public.pets;
@@ -115,6 +125,9 @@ drop policy if exists history_own on public.care_history;
 drop policy if exists devices_own on public.device_tokens;
 
 create policy profiles_own on public.profiles
+  for all using (id = auth.uid()) with check (id = auth.uid());
+
+create policy pending_profiles_own on public.pending_profiles
   for all using (id = auth.uid()) with check (id = auth.uid());
 
 create policy settings_own on public.user_settings
@@ -144,17 +157,46 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  person_name text := coalesce(new.raw_user_meta_data->>'name', '');
+  person_email text := coalesce(new.email, '');
+  person_avatar text := nullif(new.raw_user_meta_data->>'avatar', '');
 begin
-  insert into public.profiles (id, name, email)
-  values (
-    new.id,
-    coalesce(new.raw_user_meta_data->>'name', ''),
-    coalesce(new.email, '')
-  )
-  on conflict (id) do nothing;
-  insert into public.user_settings (user_id)
-  values (new.id)
-  on conflict (user_id) do nothing;
+  if new.email_confirmed_at is not null then
+    insert into public.profiles (id, name, email, avatar_ref)
+    values (new.id, person_name, person_email, person_avatar)
+    on conflict (id) do nothing;
+  else
+    insert into public.pending_profiles (id, name, email, avatar_ref)
+    values (new.id, person_name, person_email, person_avatar)
+    on conflict (id) do nothing;
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function public.handle_user_confirmed()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if old.email_confirmed_at is null and new.email_confirmed_at is not null then
+    insert into public.profiles (id, name, email, avatar_ref)
+    select id, name, email, avatar_ref
+    from public.pending_profiles
+    where id = new.id
+    on conflict (id) do nothing;
+    insert into public.profiles (id, name, email)
+    values (
+      new.id,
+      coalesce(new.raw_user_meta_data->>'name', ''),
+      coalesce(new.email, '')
+    )
+    on conflict (id) do nothing;
+    delete from public.pending_profiles where id = new.id;
+  end if;
   return new;
 end;
 $$;
@@ -163,6 +205,11 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+drop trigger if exists on_auth_user_confirmed on auth.users;
+create trigger on_auth_user_confirmed
+  after update of email_confirmed_at on auth.users
+  for each row execute function public.handle_user_confirmed();
 
 insert into storage.buckets (id, name, public)
 values ('care-media', 'care-media', false)

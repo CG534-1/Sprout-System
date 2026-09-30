@@ -37,7 +37,7 @@ class MockAuthService extends AuthService {
   }
 
   @override
-  Future<void> signUp({
+  Future<bool> signUp({
     required String name,
     required String email,
     required String password,
@@ -57,6 +57,7 @@ class MockAuthService extends AuthService {
       avatarBytes: avatarBytes,
     );
     notifyListeners();
+    return false;
   }
 
   @override
@@ -111,6 +112,12 @@ class MockAuthService extends AuthService {
   @override
   void completeOnboarding() {
     _store.onboardingComplete = true;
+    notifyListeners();
+  }
+
+  @override
+  void reopenOnboarding() {
+    _store.onboardingComplete = false;
     notifyListeners();
   }
 

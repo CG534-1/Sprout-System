@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sprout/core/app_exception.dart';
@@ -74,6 +74,14 @@ class ApiAuthService extends AuthService {
   }
 
   @override
+  void reopenOnboarding() {
+    if (!_onboardingComplete) return;
+    _onboardingComplete = false;
+    notifyListeners();
+    SharedPreferences.getInstance().then((prefs) => prefs.setBool(_onboardingKey, false));
+  }
+
+  @override
   Future<void> signIn({required String email, required String password}) async {
     await _guard(() async {
       final response = await _supabase.auth.signInWithPassword(
@@ -88,23 +96,29 @@ class ApiAuthService extends AuthService {
   }
 
   @override
-  Future<void> signUp({
+  Future<bool> signUp({
     required String name,
     required String email,
     required String password,
     String? avatarUrl,
     Uint8List? avatarBytes,
   }) async {
+    var needsConfirmation = false;
     await _guard(() async {
       final trimmedName = name.trim();
       if (trimmedName.isEmpty) throw const AppException('Enter your name.');
       final response = await _supabase.auth.signUp(
         email: email.trim(),
         password: password,
-        data: {'name': trimmedName},
+        data: {
+          'name': trimmedName,
+          if (avatarUrl != null) 'avatar': avatarUrl,
+        },
+        emailRedirectTo: kIsWeb ? Uri.base.origin : null,
       );
       if (response.session == null) {
-        throw const AppException('Confirm your email, then sign in.');
+        needsConfirmation = true;
+        return;
       }
       await _saveDetails(
         name: trimmedName,
@@ -113,6 +127,7 @@ class ApiAuthService extends AuthService {
         avatarBytes: avatarBytes,
       );
     });
+    return needsConfirmation;
   }
 
   @override

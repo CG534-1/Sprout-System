@@ -25,7 +25,7 @@ class _SignUpPageState extends State<SignUpPage> {
   final _last = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
-  var _avatar = 0;
+  var _avatar = -1;
   Uint8List? _photo;
   var _plants = false;
   var _pets = false;
@@ -102,6 +102,7 @@ class _SignUpPageState extends State<SignUpPage> {
       builder: (context) => _AvatarSheet(
         selected: _photo == null ? _avatar : -1,
         photo: _photo,
+        initials: _initials,
       ),
     );
     if (picked == null || !mounted) return;
@@ -146,6 +147,71 @@ class _SignUpPageState extends State<SignUpPage> {
     return true;
   }
 
+  Future<void> _showConfirmEmail() {
+    final email = _email.text.trim();
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: AppColors.onboardingPaper,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Confirm your email',
+                  style: GoogleFonts.fraunces(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.ink,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'We sent a link to $email. Open it to confirm, then continue into onboarding.',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 14,
+                    height: 1.45,
+                    color: AppColors.onboardingBody,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: Text(
+                      'Continue',
+                      style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String get _initials {
+    final first = _first.text.trim();
+    final last = _last.text.trim();
+    final start = first.isEmpty ? '' : first[0];
+    final end = last.isEmpty ? '' : last[0];
+    return '$start$end'.toUpperCase();
+  }
+
   bool get _passwordReady {
     final value = _password.text;
     return value.length >= 8 &&
@@ -161,14 +227,22 @@ class _SignUpPageState extends State<SignUpPage> {
       _passwordError = null;
     });
     try {
-      await context.read<AuthService>().signUp(
+      final needsConfirmation = await context.read<AuthService>().signUp(
         name: '${_first.text.trim()} ${_last.text.trim()}',
         email: _email.text,
         password: _password.text,
-        avatarUrl: _photo == null ? _avatars[_avatar] : null,
+        avatarUrl: _photo == null && _avatar >= 0 ? _avatars[_avatar] : null,
         avatarBytes: _photo,
       );
-      if (context.mounted) context.go(AppRoutes.today);
+      if (!mounted) return;
+      if (needsConfirmation) {
+        await _showConfirmEmail();
+        if (!mounted) return;
+        context.read<AuthService>().reopenOnboarding();
+        context.go(AppRoutes.onboarding);
+        return;
+      }
+      context.go(AppRoutes.today);
     } on AppException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -350,8 +424,9 @@ class _SignUpPageState extends State<SignUpPage> {
             width: 96,
             height: 96,
             child: _MemojiFace(
-              asset: _photo == null ? _avatars[_avatar] : null,
+              asset: _photo == null && _avatar >= 0 ? _avatars[_avatar] : null,
               bytes: _photo,
+              initials: _initials,
             ),
           ),
         ),
@@ -809,15 +884,18 @@ class _AvatarPick {
 
   const _AvatarPick.photo(Uint8List this.bytes) : index = -1;
 
+  const _AvatarPick.none() : index = -1, bytes = null;
+
   final int index;
   final Uint8List? bytes;
 }
 
 class _AvatarSheet extends StatelessWidget {
-  const _AvatarSheet({required this.selected, this.photo});
+  const _AvatarSheet({required this.selected, this.photo, this.initials = ''});
 
   final int selected;
   final Uint8List? photo;
+  final String initials;
 
   Future<void> _upload(BuildContext context) async {
     final file = await ImagePicker().pickImage(
@@ -866,14 +944,24 @@ class _AvatarSheet extends StatelessWidget {
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: _avatars.length + 1,
+              itemCount: _avatars.length + 2,
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
                 mainAxisSpacing: 10,
                 crossAxisSpacing: 8,
               ),
               itemBuilder: (context, index) {
-                if (index == _avatars.length) {
+                if (index == 0) {
+                  return GestureDetector(
+                    key: const Key('no-avatar'),
+                    onTap: () => Navigator.pop(context, const _AvatarPick.none()),
+                    child: _InitialsChoice(
+                      initials: initials,
+                      selected: selected < 0 && photo == null,
+                    ),
+                  );
+                }
+                if (index == _avatars.length + 1) {
                   return GestureDetector(
                     key: const Key('upload-avatar'),
                     onTap: () => _upload(context),
@@ -883,11 +971,12 @@ class _AvatarSheet extends StatelessWidget {
                     ),
                   );
                 }
+                final memoji = index - 1;
                 return GestureDetector(
-                  onTap: () => Navigator.pop(context, _AvatarPick.memoji(index)),
+                  onTap: () => Navigator.pop(context, _AvatarPick.memoji(memoji)),
                   child: _AvatarChoice(
-                    asset: _avatars[index],
-                    selected: index == selected,
+                    asset: _avatars[memoji],
+                    selected: memoji == selected,
                   ),
                 );
               },
@@ -895,6 +984,45 @@ class _AvatarSheet extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _InitialsChoice extends StatelessWidget {
+  const _InitialsChoice({required this.initials, required this.selected});
+
+  final String initials;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        CustomPaint(
+          painter: _DashedRingPainter(
+            selected ? AppColors.sproutGreen : AppColors.dotIdle,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: DecoratedBox(
+              decoration: const BoxDecoration(color: AppColors.field, shape: BoxShape.circle),
+              child: Center(
+                child: Text(
+                  initials.isEmpty ? 'None' : initials,
+                  style: GoogleFonts.fraunces(
+                    fontSize: initials.isEmpty ? 14 : 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.sproutGreen,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (selected)
+          const Positioned(top: -2, right: 2, child: _AvatarCheck()),
+      ],
     );
   }
 }
@@ -1015,20 +1143,31 @@ class _AvatarCheck extends StatelessWidget {
 }
 
 class _MemojiFace extends StatelessWidget {
-  const _MemojiFace({this.asset, this.bytes});
+  const _MemojiFace({this.asset, this.bytes, this.initials = ''});
 
   final String? asset;
   final Uint8List? bytes;
+  final String initials;
 
   @override
   Widget build(BuildContext context) {
-    final photo = bytes != null;
     return ClipOval(
       child: ColoredBox(
         color: AppColors.field,
-        child: photo
+        child: bytes != null
             ? Image.memory(bytes!, fit: BoxFit.cover)
-            : Image.asset(asset!, fit: BoxFit.contain),
+            : asset != null
+            ? Image.asset(asset!, fit: BoxFit.contain)
+            : Center(
+                child: Text(
+                  initials,
+                  style: GoogleFonts.fraunces(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.sproutGreen,
+                  ),
+                ),
+              ),
       ),
     );
   }

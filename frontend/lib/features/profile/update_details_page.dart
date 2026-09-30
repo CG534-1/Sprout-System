@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:sprout/core/app_exception.dart';
+import 'package:sprout/core/widgets/person_avatar.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/auth_validators.dart';
@@ -33,7 +34,7 @@ class UpdateDetailsPage extends StatefulWidget {
 class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
   late final TextEditingController _name;
   late final TextEditingController _email;
-  var _avatar = 0;
+  var _avatar = -1;
   Uint8List? _photo;
   var _keepRemoteAvatar = false;
   var _saving = false;
@@ -51,7 +52,7 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
     final index = _avatars.indexOf(url ?? '');
     if (_photo == null && index >= 0) {
       _avatar = index;
-    } else if (_photo == null && url != null && !url.startsWith('assets/')) {
+    } else if (_photo == null && url != null && url.isNotEmpty && !url.startsWith('assets/')) {
       _keepRemoteAvatar = true;
     }
   }
@@ -68,7 +69,11 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _AvatarSheet(selected: _photo == null ? _avatar : -1, photo: _photo),
+      builder: (context) => _AvatarSheet(
+        selected: _photo == null ? _avatar : -1,
+        photo: _photo,
+        initials: sproutInitials(_name.text),
+      ),
     );
     if (picked == null || !mounted) return;
     setState(() {
@@ -96,7 +101,9 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
       await context.read<AuthService>().updateDetails(
         name: _name.text,
         email: _email.text,
-        avatarUrl: _photo == null && !_keepRemoteAvatar ? _avatars[_avatar] : null,
+        avatarUrl: _photo == null && !_keepRemoteAvatar
+            ? (_avatar >= 0 ? _avatars[_avatar] : '')
+            : null,
         avatarBytes: _photo,
       );
       if (mounted) context.pop();
@@ -152,9 +159,17 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
                               height: 72,
                               child: ColoredBox(
                                 color: AppColors.field,
-                                child: _photo != null
-                                    ? Image.memory(_photo!, fit: BoxFit.cover)
-                                    : Image.asset(_avatars[_avatar], fit: BoxFit.contain),
+                                child: PersonAvatar(
+                                  name: _name.text,
+                                  avatarBytes: _photo,
+                                  avatarUrl: _photo != null
+                                      ? null
+                                      : _keepRemoteAvatar
+                                      ? context.read<AuthService>().currentUser?.avatarUrl
+                                      : _avatar >= 0
+                                      ? _avatars[_avatar]
+                                      : null,
+                                ),
                               ),
                             ),
                           ),
@@ -204,16 +219,18 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
 class _AvatarChoice {
   const _AvatarChoice.memoji(this.index) : bytes = null;
   const _AvatarChoice.photo(Uint8List this.bytes) : index = -1;
+  const _AvatarChoice.none() : index = -1, bytes = null;
 
   final int index;
   final Uint8List? bytes;
 }
 
 class _AvatarSheet extends StatelessWidget {
-  const _AvatarSheet({required this.selected, this.photo});
+  const _AvatarSheet({required this.selected, this.photo, this.initials = ''});
 
   final int selected;
   final Uint8List? photo;
+  final String initials;
 
   Future<void> _upload(BuildContext context) async {
     final file = await ImagePicker().pickImage(
@@ -253,14 +270,32 @@ class _AvatarSheet extends StatelessWidget {
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: _avatars.length + 1,
+            itemCount: _avatars.length + 2,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 3,
               mainAxisSpacing: 12,
               crossAxisSpacing: 12,
             ),
             itemBuilder: (context, index) {
-              if (index == _avatars.length) {
+              if (index == 0) {
+                return GestureDetector(
+                  onTap: () => Navigator.pop(context, const _AvatarChoice.none()),
+                  child: _Face(
+                    selected: selected < 0 && photo == null,
+                    child: Center(
+                      child: Text(
+                        initials.isEmpty ? 'None' : initials,
+                        style: GoogleFonts.fraunces(
+                          fontSize: initials.isEmpty ? 14 : 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.sproutGreen,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }
+              if (index == _avatars.length + 1) {
                 return GestureDetector(
                   onTap: () => _upload(context),
                   child: _Face(
@@ -285,11 +320,12 @@ class _AvatarSheet extends StatelessWidget {
                   ),
                 );
               }
+              final memoji = index - 1;
               return GestureDetector(
-                onTap: () => Navigator.pop(context, _AvatarChoice.memoji(index)),
+                onTap: () => Navigator.pop(context, _AvatarChoice.memoji(memoji)),
                 child: _Face(
-                  selected: index == selected,
-                  child: Image.asset(_avatars[index], fit: BoxFit.contain),
+                  selected: memoji == selected,
+                  child: Image.asset(_avatars[memoji], fit: BoxFit.contain),
                 ),
               );
             },
