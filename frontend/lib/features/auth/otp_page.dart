@@ -12,10 +12,16 @@ import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/auth_widgets.dart';
 
 class OtpPage extends StatefulWidget {
-  const OtpPage({super.key, required this.email, required this.purpose});
+  const OtpPage({
+    super.key,
+    required this.email,
+    required this.purpose,
+    this.currentEmail = '',
+  });
 
   final String email;
   final String purpose;
+  final String currentEmail;
 
   @override
   State<OtpPage> createState() => _OtpPageState();
@@ -31,6 +37,9 @@ class _OtpPageState extends State<OtpPage> {
   Timer? _wait;
 
   bool get _recovery => widget.purpose == 'recovery';
+  bool get _emailChange => widget.purpose == 'email_change';
+  late String _target = widget.email;
+  var _askedCurrent = false;
 
   @override
   void initState() {
@@ -69,6 +78,7 @@ class _OtpPageState extends State<OtpPage> {
       await context.read<AuthService>().resendEmailCode(
         email: widget.email,
         recovery: _recovery,
+        emailChange: _emailChange,
       );
       if (!mounted) return;
       setState(() => _resending = false);
@@ -88,8 +98,29 @@ class _OtpPageState extends State<OtpPage> {
       _checking = true;
       _error = null;
     });
+    final auth = context.read<AuthService>();
+    auth.holdRouting();
     try {
-      final auth = context.read<AuthService>();
+      if (_emailChange) {
+        final confirmed = await auth.confirmEmailChange(email: _target, code: _code.text);
+        if (!mounted) return;
+        final wanted = widget.email.trim().toLowerCase();
+        final now = confirmed?.trim().toLowerCase();
+        if (now == wanted) {
+          context.pop(true);
+          return;
+        }
+        if (!_askedCurrent && widget.currentEmail.isNotEmpty) {
+          setState(() {
+            _askedCurrent = true;
+            _target = widget.currentEmail;
+            _code.clear();
+            _checking = false;
+          });
+          return;
+        }
+        throw const AppException('That code did not finish the email change. Resend it and try again.');
+      }
       if (_recovery) {
         await auth.confirmRecoveryCode(email: widget.email, code: _code.text);
         if (!mounted) return;
@@ -98,13 +129,15 @@ class _OtpPageState extends State<OtpPage> {
       }
       await auth.confirmEmailCode(email: widget.email, code: _code.text);
       if (!mounted) return;
-      context.go(AppRoutes.signUp);
+      context.pop(true);
     } on AppException catch (error) {
       if (!mounted) return;
       setState(() {
         _checking = false;
         _error = error.message;
       });
+    } finally {
+      auth.releaseRouting();
     }
   }
 
@@ -135,7 +168,9 @@ class _OtpPageState extends State<OtpPage> {
                       const AuthHeadline(lead: 'Enter your', accent: 'code.'),
                       const SizedBox(height: 8),
                       Text(
-                        'We sent a 6-digit code to ${widget.email}.',
+                        _askedCurrent
+                            ? 'We also sent a code to ${widget.currentEmail}.'
+                            : 'We sent a 6-digit code to ${widget.email}.',
                         style: GoogleFonts.dmSans(
                           fontSize: 14,
                           height: 20 / 14,

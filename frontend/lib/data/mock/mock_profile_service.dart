@@ -2,6 +2,7 @@ import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/data/mock/mock_auth_service.dart';
 import 'package:sprout/data/mock/mock_store.dart';
 import 'package:sprout/data/models/care_settings.dart';
+import 'package:sprout/data/models/push_note.dart';
 import 'package:sprout/data/models/user_profile.dart';
 import 'package:sprout/data/services/profile_service.dart';
 
@@ -53,4 +54,13 @@ class MockProfileService extends ProfileService {
 
   @override
   Future<void> registerDevice({required String token, required String platform}) async {}
+
+  @override
+  Future<List<PushNote>> notifications() async {
+    await _store.pause();
+    return const [];
+  }
+
+  @override
+  Future<void> markNotificationsRead() async {}
 }

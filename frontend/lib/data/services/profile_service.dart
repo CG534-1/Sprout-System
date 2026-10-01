@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:sprout/data/models/care_settings.dart';
+import 'package:sprout/data/models/push_note.dart';
 import 'package:sprout/data/models/user_profile.dart';
 
 abstract class ProfileService extends ChangeNotifier {
@@ -12,4 +13,8 @@ abstract class ProfileService extends ChangeNotifier {
   Future<CareSettings> updateSettings(CareSettings settings);
 
   Future<void> registerDevice({required String token, required String platform});
+
+  Future<List<PushNote>> notifications();
+
+  Future<void> markNotificationsRead();
 }

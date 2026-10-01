@@ -40,22 +40,33 @@ class _SignUpPageState extends State<SignUpPage> {
   var _obscure = true;
   var _agreed = false;
   var _submitting = false;
+  var _continuedAfterCode = false;
+  AuthService? _auth;
 
   @override
   void initState() {
     super.initState();
-    final auth = context.read<AuthService>();
-    if (auth.pendingSignup) {
+    _auth = context.read<AuthService>();
+    if (_auth!.pendingSignup) {
+      _continuedAfterCode = true;
       _step = 1;
-      _first.text = auth.pendingFirst ?? '';
-      _last.text = auth.pendingLast ?? '';
-      _email.text = auth.pendingEmail ?? '';
+      _first.text = _auth!.pendingFirst ?? '';
+      _last.text = _auth!.pendingLast ?? '';
+      _email.text = _auth!.pendingEmail ?? '';
     }
+    _auth!.addListener(_continueAfterCode);
     _first.addListener(_refresh);
     _last.addListener(_refresh);
     _email.addListener(_refresh);
     _password.addListener(_refresh);
     _leaveFieldsAlone();
+  }
+
+  void _continueAfterCode() {
+    if (!mounted || _continuedAfterCode || _step != 0) return;
+    if (_auth?.pendingSignup != true) return;
+    _continuedAfterCode = true;
+    setState(() => _step = 1);
   }
 
   void _leaveFieldsAlone() {
@@ -78,6 +89,7 @@ class _SignUpPageState extends State<SignUpPage> {
 
   @override
   void dispose() {
+    _auth?.removeListener(_continueAfterCode);
     _first.removeListener(_refresh);
     _last.removeListener(_refresh);
     _email.removeListener(_refresh);

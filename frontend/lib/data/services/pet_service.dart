@@ -11,6 +11,7 @@ abstract class PetService extends ChangeNotifier {
   Future<Pet> createPet({
     required String name,
     required String species,
+    String breed = '',
     String? notes,
     Uint8List? photoBytes,
   });

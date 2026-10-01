@@ -28,13 +28,18 @@ async function dispatchUser(admin, sender, setting, now) {
     .eq('status', 'due');
   const open = tasks ?? [];
   let sent = 0;
-  const lead = leadMinutes(setting.lead);
+  const { data: schedules } = await admin
+    .from('care_schedules')
+    .select('id, lead')
+    .eq('user_id', setting.user_id);
+  const leadBySchedule = new Map((schedules ?? []).map((row) => [row.id, row.lead]));
 
   for (const task of open) {
     const due = new Date(task.due_at).getTime();
+    const lead = leadMinutes(leadBySchedule.get(task.schedule_id) || setting.lead);
     const trigger = due - lead * 60000;
     if (setting.reminders && !task.reminded_at && now.getTime() >= trigger && now.getTime() < due) {
-      const ok = await send(sender, admin, targets, {
+      const ok = await send(sender, admin, setting.user_id, targets, {
         title: 'Care reminder',
         body: `${label(task.action)} ${task.subject_name}`,
       });
@@ -47,7 +52,7 @@ async function dispatchUser(admin, sender, setting, now) {
       !task.overdue_sent_at &&
       now.getTime() >= due
     ) {
-      const ok = await send(sender, admin, targets, {
+      const ok = await send(sender, admin, setting.user_id, targets, {
         title: 'Overdue care',
         body: `${label(task.action)} ${task.subject_name} is still open`,
       });
@@ -68,7 +73,7 @@ async function dispatchUser(admin, sender, setting, now) {
     dueToday.length
   ) {
     const tip = setting.tips ? ' A little progress, every day.' : '';
-    const ok = await send(sender, admin, targets, {
+    const ok = await send(sender, admin, setting.user_id, targets, {
       title: 'Today on Sprout',
       body: `${dueToday.length} care task${dueToday.length === 1 ? '' : 's'} today.${tip}`,
     });
@@ -93,7 +98,7 @@ function label(action) {
   return names[action] ?? 'Care for';
 }
 
-async function send(sender, admin, tokens, note) {
+async function send(sender, admin, userId, tokens, note) {
   try {
     const response = await sender.sendEachForMulticast({
       tokens,
@@ -107,7 +112,15 @@ async function send(sender, admin, tokens, note) {
       }
     });
     if (stale.length) await admin.from('device_tokens').delete().in('token', stale);
-    return response.successCount > 0;
+    if (response.successCount > 0) {
+      await admin.from('push_notifications').insert({
+        user_id: userId,
+        title: note.title,
+        body: note.body,
+      });
+      return true;
+    }
+    return false;
   } catch (error) {
     console.error(error);
     return false;

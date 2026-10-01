@@ -15,6 +15,7 @@ import 'package:sprout/features/care/add_care_sheet.dart';
 import 'package:sprout/features/care/care_detail_sheet.dart';
 import 'package:sprout/features/care/care_sheet.dart';
 import 'package:sprout/features/shell/care_nav.dart';
+import 'package:sprout/features/shell/quiet_card.dart';
 
 enum _Filter { all, plants, pets }
 
@@ -157,40 +158,45 @@ class _MyCarePageState extends State<MyCarePage> {
                   ],
                 ),
                 const SizedBox(height: 24),
-                Row(
-                  children: [
-                    _FilterChip(
-                      label: 'All',
-                      selected: _filter == _Filter.all,
-                      onTap: () => setState(() => _filter = _Filter.all),
-                    ),
-                    const SizedBox(width: 7),
-                    _FilterChip(
-                      label: 'Plants',
-                      selected: _filter == _Filter.plants,
-                      onTap: () => setState(() => _filter = _Filter.plants),
-                    ),
-                    const SizedBox(width: 7),
-                    _FilterChip(
-                      label: 'Pets',
-                      selected: _filter == _Filter.pets,
-                      onTap: () => setState(() => _filter = _Filter.pets),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
+                if (_members.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      _FilterChip(
+                        label: 'All',
+                        selected: _filter == _Filter.all,
+                        onTap: () => setState(() => _filter = _Filter.all),
+                      ),
+                      const SizedBox(width: 7),
+                      _FilterChip(
+                        label: 'Plants',
+                        selected: _filter == _Filter.plants,
+                        onTap: () => setState(() => _filter = _Filter.plants),
+                      ),
+                      const SizedBox(width: 7),
+                      _FilterChip(
+                        label: 'Pets',
+                        selected: _filter == _Filter.pets,
+                        onTap: () => setState(() => _filter = _Filter.pets),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                ],
                 if (_loading)
                   const SizedBox(height: 120)
+                else if (_members.isEmpty)
+                  QuietCard(
+                    icon: Icons.yard_outlined,
+                    title: 'No one to care for yet',
+                    body: 'Add a plant or a pet. You can set their routine when you are ready.',
+                    action: 'Add someone',
+                    onAction: () => showAddCareSheet(context),
+                  )
                 else if (visible.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 24),
-                    child: Text(
-                      'Nothing here yet',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 14,
-                        color: AppColors.onboardingBody,
-                      ),
-                    ),
+                  QuietCard(
+                    icon: _filter == _Filter.pets ? Icons.pets_outlined : Icons.spa_outlined,
+                    title: _filter == _Filter.pets ? 'No pets yet' : 'No plants yet',
+                    body: 'This filter is empty. The rest of your home is still on All.',
                   )
                 else
                   GridView.builder(
@@ -229,6 +235,7 @@ class _Member {
     required this.line,
     required this.schedules,
     this.species = '',
+    this.breed = '',
     this.photoUrl,
     this.photoBytes,
     this.location,
@@ -260,9 +267,15 @@ class _Member {
       if (schedule.action == CareAction.feed && times != null) {
         parts.add('Feed ${times}x/day');
       }
-      if (schedule.action == CareAction.waterBowl) parts.add('Water bowl');
+      if (schedule.action == CareAction.waterBowl) {
+        parts.add(schedule.frequency == CareFrequency.daily ? 'Water bowl' : 'Water bowl · ${schedule.whenLabel}');
+      }
       if (schedule.action == CareAction.walk && times != null) {
-        parts.add('Walk ${times}x/day');
+        parts.add(
+          schedule.frequency == CareFrequency.daily
+              ? 'Walk ${times}x/day'
+              : 'Walk ${times}x · ${schedule.whenLabel}',
+        );
       }
     }
     return _Member(
@@ -270,6 +283,7 @@ class _Member {
       name: pet.name,
       type: CareSubjectType.pet,
       species: pet.species,
+      breed: pet.breed,
       photoUrl: pet.photoUrl,
       photoBytes: pet.photoBytes,
       notes: pet.notes,
@@ -283,6 +297,7 @@ class _Member {
   final String name;
   final CareSubjectType type;
   final String species;
+  final String breed;
   final String? photoUrl;
   final Uint8List? photoBytes;
   final String? location;
@@ -351,6 +366,7 @@ class _Card extends StatelessWidget {
           type: member.type,
           createdAt: member.createdAt,
           species: member.species,
+          breed: member.breed,
           photoUrl: member.photoUrl,
           photoBytes: member.photoBytes,
           location: member.location,

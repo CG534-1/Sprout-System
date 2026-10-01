@@ -23,6 +23,11 @@ abstract class AuthService extends ChangeNotifier {
 
   bool get resettingPassword => false;
 
+  /// Keeps the router from rebuilding the code page while a code is checked.
+  void holdRouting() {}
+
+  void releaseRouting() {}
+
   void markSplashSeen();
 
   Future<void> signIn({required String email, required String password});
@@ -37,7 +42,16 @@ abstract class AuthService extends ChangeNotifier {
 
   Future<void> confirmRecoveryCode({required String email, required String code});
 
-  Future<void> resendEmailCode({required String email, required bool recovery});
+  Future<void> requestEmailChange({required String email});
+
+  /// Returns the email on the session after the code is accepted.
+  Future<String?> confirmEmailChange({required String email, required String code});
+
+  Future<void> resendEmailCode({
+    required String email,
+    required bool recovery,
+    bool emailChange = false,
+  });
 
   Future<void> setNewPassword({required String password});
 

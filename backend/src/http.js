@@ -1,7 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
-import { localDayKey, nextDue, utcOffsetMinutes } from './care.js';
+import { localDayKey, utcOffsetMinutes, duesOnCycle } from './care.js';
 import { dispatchReminders } from './dispatch.js';
 
 const bucket = 'care-media';
@@ -144,6 +144,33 @@ export function createApp() {
     }
   });
 
+  app.get('/api/me/notifications', async (req, res, next) => {
+    try {
+      const { data, error } = await req.db
+        .from('push_notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      res.json((data ?? []).map(noteJson));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/me/notifications/read', async (req, res, next) => {
+    try {
+      const { error } = await req.db
+        .from('push_notifications')
+        .update({ read_at: new Date().toISOString() })
+        .is('read_at', null);
+      if (error) throw error;
+      res.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post('/api/devices', async (req, res, next) => {
     try {
       const token = String(req.body.token ?? '');
@@ -268,6 +295,7 @@ export function createApp() {
           user_id: req.user.id,
           name,
           species: String(req.body.species ?? '').trim(),
+          breed: String(req.body.breed ?? '').trim(),
           notes: emptyToNull(req.body.notes),
           photo_path: emptyToNull(req.body.photoPath),
         })
@@ -287,6 +315,7 @@ export function createApp() {
       const patch = {
         name,
         species: String(req.body.species ?? '').trim(),
+        breed: String(req.body.breed ?? '').trim(),
         notes: emptyToNull(req.body.notes),
       };
       if (req.body.photoPath) patch.photo_path = req.body.photoPath;
@@ -344,16 +373,14 @@ export function createApp() {
         .neq('status', 'done');
       if (dropTasks) throw dropTasks;
       for (const entry of entries) {
-        const due = nextDue(
-          {
-            frequency: entry.frequency,
-            reminders: entry.reminders ?? [],
-            everyDays: entry.everyDays,
-            weekdays: entry.weekdays ?? [],
-            lastDone: entry.lastDone,
-          },
-          offset,
-        );
+        const plan = {
+          frequency: entry.frequency,
+          reminders: entry.reminders ?? [],
+          everyDays: entry.everyDays,
+          weekdays: entry.weekdays ?? [],
+          lastDone: entry.lastDone,
+        };
+        const times = duesOnCycle(plan, offset);
         const { data: schedule, error } = await req.db
           .from('care_schedules')
           .insert({
@@ -362,27 +389,30 @@ export function createApp() {
             subject_type: subjectType,
             action: entry.action,
             frequency: entry.frequency,
-            next_due: due,
+            next_due: times[0],
             times_per_day: entry.timesPerDay ?? null,
             reminders: entry.reminders ?? [],
             every_days: entry.everyDays ?? null,
             weekdays: entry.weekdays ?? [],
             last_done: entry.lastDone ?? null,
+            lead: entry.lead || null,
           })
           .select('*')
           .single();
         if (error) throw error;
-        const { error: taskError } = await req.db.from('care_tasks').insert({
-          user_id: req.user.id,
-          schedule_id: schedule.id,
-          subject_id: subjectId,
-          subject_type: subjectType,
-          subject_name: subjectName,
-          action: entry.action,
-          due_at: due,
-          status: 'due',
-        });
-        if (taskError) throw taskError;
+        for (const due of times) {
+          const { error: taskError } = await req.db.from('care_tasks').insert({
+            user_id: req.user.id,
+            schedule_id: schedule.id,
+            subject_id: subjectId,
+            subject_type: subjectType,
+            subject_name: subjectName,
+            action: entry.action,
+            due_at: due,
+            status: 'due',
+          });
+          if (taskError) throw taskError;
+        }
       }
       res.status(204).end();
     } catch (error) {
@@ -580,9 +610,20 @@ async function petJson(admin, row) {
     id: row.id,
     name: row.name,
     species: row.species,
+    breed: row.breed ?? '',
     photoUrl: await signedUrl(admin, row.photo_path),
     notes: row.notes,
     createdAt: row.created_at,
+  };
+}
+
+function noteJson(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    body: row.body,
+    createdAt: row.created_at,
+    read: row.read_at != null,
   };
 }
 
@@ -599,6 +640,7 @@ function scheduleJson(row) {
     everyDays: row.every_days,
     weekdays: row.weekdays ?? [],
     lastDone: row.last_done,
+    lead: row.lead ?? null,
   };
 }
 

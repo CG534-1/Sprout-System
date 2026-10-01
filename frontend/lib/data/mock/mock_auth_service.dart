@@ -67,7 +67,27 @@ class MockAuthService extends AuthService {
   }
 
   @override
-  Future<void> resendEmailCode({required String email, required bool recovery}) async {
+  Future<void> requestEmailChange({required String email}) async {
+    await _store.pause();
+    final trimmed = email.trim();
+    if (trimmed.isEmpty || !trimmed.contains('@')) {
+      throw const AppException('Enter a valid email.');
+    }
+  }
+
+  @override
+  Future<String?> confirmEmailChange({required String email, required String code}) async {
+    await _store.pause();
+    _requireCode(email, code);
+    return email.trim();
+  }
+
+  @override
+  Future<void> resendEmailCode({
+    required String email,
+    required bool recovery,
+    bool emailChange = false,
+  }) async {
     await _store.pause();
     final trimmed = email.trim();
     if (trimmed.isEmpty || !trimmed.contains('@')) {

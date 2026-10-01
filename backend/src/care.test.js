@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { localDayKey, nextDue, preferredHour } from './care.js';
+import { localDayKey, nextDue, preferredHour, duesOnCycle } from './care.js';
 
 test('next care later today stays on today', () => {
   const now = new Date('2026-09-30T07:00:00.000Z');
@@ -51,6 +51,20 @@ test('a daily summary uses the saved time of day', () => {
   assert.equal(preferredHour('morning'), 9);
   assert.equal(preferredHour('afternoon'), 13);
   assert.equal(preferredHour('evening'), 18);
+});
+
+test('each selected reminder becomes its own task on that day', () => {
+  const now = new Date('2026-10-01T08:00:00.000Z');
+  const times = duesOnCycle(
+    { frequency: 'daily', reminders: ['morning', 'afternoon', 'evening'], weekdays: [] },
+    0,
+    now,
+  );
+  assert.deepEqual(times, [
+    '2026-10-01T09:00:00.000Z',
+    '2026-10-01T13:00:00.000Z',
+    '2026-10-01T18:00:00.000Z',
+  ]);
 });
 
 test('local day follows the phone offset', () => {

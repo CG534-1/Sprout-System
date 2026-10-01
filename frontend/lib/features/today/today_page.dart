@@ -13,7 +13,11 @@ import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/data/services/care_service.dart';
 import 'package:sprout/data/services/pet_service.dart';
 import 'package:sprout/data/services/plant_service.dart';
+import 'package:sprout/data/services/profile_service.dart';
+import 'package:sprout/features/care/add_care_sheet.dart';
 import 'package:sprout/features/shell/care_nav.dart';
+import 'package:sprout/features/shell/quiet_card.dart';
+import 'package:sprout/features/today/bell_sheet.dart';
 import 'package:sprout/features/today/calendar_sheet.dart';
 
 
@@ -29,6 +33,7 @@ class _TodayPageState extends State<TodayPage> {
   CareTask? _upcoming;
   Map<String, String> _photos = {};
   var _loading = true;
+  var _unread = 0;
 
   @override
   void initState() {
@@ -65,6 +70,18 @@ class _TodayPageState extends State<TodayPage> {
       _upcoming = bundled.$4;
       _loading = false;
     });
+    await _loadNotes();
+  }
+
+  Future<void> _loadNotes() async {
+    final notes = await context.read<ProfileService>().notifications();
+    if (!mounted) return;
+    setState(() => _unread = notes.where((note) => !note.read).length);
+  }
+
+  Future<void> _openBell() async {
+    await showBellSheet(context);
+    if (mounted) await _loadNotes();
   }
 
   Future<CareTask?> _nextTask(CareService care, DateTime today) async {
@@ -95,6 +112,7 @@ class _TodayPageState extends State<TodayPage> {
     final first = name.trim().split(RegExp(r'\s+')).first;
     final done = _today.where((task) => task.status == TaskStatus.done).length;
     final caughtUp = _today.isNotEmpty && done == _today.length;
+    final quiet = !_loading && _today.isEmpty;
 
     return Scaffold(
       backgroundColor: AppColors.onboardingPaper,
@@ -105,17 +123,33 @@ class _TodayPageState extends State<TodayPage> {
             ListView(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 110),
               children: [
-                _Header(firstName: first, user: user),
+                _Header(
+                  firstName: first,
+                  user: user,
+                  unread: _unread,
+                  onBell: _openBell,
+                ),
                 const SizedBox(height: 24),
-                _Hero(count: _today.length, caughtUp: caughtUp),
+                _Hero(count: _today.length, caughtUp: caughtUp, quiet: quiet),
                 const SizedBox(height: 26),
                 _SectionTitle(
                   title: "Today's care",
-                  trailing: _loading
+                  trailing: _loading || quiet
                       ? ''
                       : '$done/${_today.length} complete',
                 ),
                 const SizedBox(height: 12),
+                if (quiet)
+                  QuietCard(
+                    icon: Icons.spa_outlined,
+                    title: 'Your home is empty',
+                    body: 'Add a plant or a pet. Their care will show up here.',
+                    action: 'Add someone',
+                    onAction: () async {
+                      await showAddCareSheet(context);
+                      if (mounted) await _load();
+                    },
+                  ),
                 for (final task in _today) ...[
                   _TaskCard(
                     task: task,
@@ -128,17 +162,20 @@ class _TodayPageState extends State<TodayPage> {
                   const SizedBox(height: 1),
                   const _CaughtUpNote(),
                 ],
-                if (_upcoming != null) ...[
+                if (!quiet && !_loading) ...[
                   const SizedBox(height: 18),
-                  _SectionTitle(
+                  const _SectionTitle(
                     title: 'Coming up',
-                    trailing: const _CalendarLink(),
+                    trailing: _CalendarLink(),
                   ),
                   const SizedBox(height: 12),
-                  _UpcomingCard(
-                    task: _upcoming!,
-                    photo: _photos[_upcoming!.subjectId],
-                  ),
+                  if (_upcoming != null)
+                    _UpcomingCard(
+                      task: _upcoming!,
+                      photo: _photos[_upcoming!.subjectId],
+                    )
+                  else
+                    const _QuietLine('Nothing else this week.'),
                 ],
               ],
             ),
@@ -156,10 +193,17 @@ class _TodayPageState extends State<TodayPage> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.firstName, required this.user});
+  const _Header({
+    required this.firstName,
+    required this.user,
+    required this.unread,
+    required this.onBell,
+  });
 
   final String firstName;
   final UserProfile? user;
+  final int unread;
+  final VoidCallback onBell;
 
   @override
   Widget build(BuildContext context) {
@@ -212,7 +256,7 @@ class _Header extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        const _Bell(),
+        _Bell(unread: unread, onTap: onBell),
         const SizedBox(width: 10),
         _MemojiAvatar(user: user),
       ],
@@ -221,55 +265,63 @@ class _Header extends StatelessWidget {
 }
 
 class _Bell extends StatelessWidget {
-  const _Bell();
+  const _Bell({required this.unread, required this.onTap});
+
+  final int unread;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 4),
-      child: SizedBox(
-        width: 36,
-        height: 36,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.dotIdle, width: 0.8),
-              ),
-              alignment: Alignment.center,
-              child: SvgPicture.asset(
-                'assets/icons/icon_bell.svg',
-                width: 18,
-                height: 18,
-              ),
-            ),
-            Positioned(
-              right: -2,
-              top: -3,
-              child: Container(
-                width: 16,
-                height: 16,
-                alignment: Alignment.center,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
-                  color: AppColors.sproutGreen,
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFEEF8F0), width: 0.8),
+                  border: Border.all(color: AppColors.dotIdle, width: 0.8),
                 ),
-                child: Text(
-                  '2',
-                  style: GoogleFonts.dmMono(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white,
+                alignment: Alignment.center,
+                child: SvgPicture.asset(
+                  'assets/icons/icon_bell.svg',
+                  width: 18,
+                  height: 18,
+                ),
+              ),
+              if (unread > 0)
+                Positioned(
+                  right: -2,
+                  top: -3,
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.sproutGreen,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFEEF8F0), width: 0.8),
+                    ),
+                    child: Text(
+                      unread > 9 ? '9' : '$unread',
+                      style: GoogleFonts.dmMono(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -303,18 +355,23 @@ class _MemojiAvatar extends StatelessWidget {
 }
 
 class _Hero extends StatelessWidget {
-  const _Hero({required this.count, required this.caughtUp});
+  const _Hero({required this.count, required this.caughtUp, required this.quiet});
 
   final int count;
   final bool caughtUp;
+  final bool quiet;
 
   @override
   Widget build(BuildContext context) {
     final title = caughtUp
         ? 'All caught up! 🌿'
+        : quiet
+        ? 'A quiet day'
         : '$count care ${count == 1 ? 'task' : 'tasks'} today';
     final body = caughtUp
         ? 'The ones you love are cared for.'
+        : quiet
+        ? 'Nothing is due until someone joins your home.'
         : 'A little attention goes a long way.';
     return Container(
       height: caughtUp ? 123 : 120,
@@ -534,6 +591,20 @@ class _Check extends StatelessWidget {
                 border: Border.all(color: AppColors.dotIdle, width: 0.8),
               ),
             ),
+    );
+  }
+}
+
+class _QuietLine extends StatelessWidget {
+  const _QuietLine(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: GoogleFonts.dmSans(fontSize: 14, height: 1.4, color: AppColors.onboardingBody),
     );
   }
 }

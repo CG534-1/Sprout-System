@@ -97,21 +97,30 @@ class MockCareService extends CareService {
     );
     final now = DateTime.now();
     for (final entry in entries) {
-      final due = _nextDue(now, entry);
-      final schedule = CareSchedule(
-        id: _store.nextId('schedule'),
-        subjectId: subjectId,
-        subjectType: subjectType,
-        action: entry.action,
-        frequency: entry.frequency,
-        nextDue: due,
-        timesPerDay: entry.timesPerDay,
-        reminders: entry.reminders,
-        everyDays: entry.everyDays,
-        weekdays: entry.weekdays,
-        lastDone: entry.lastDone,
-      );
-      _store.schedules.add(schedule);
+    final due = _nextDue(now, entry);
+    final schedule = CareSchedule(
+      id: _store.nextId('schedule'),
+      subjectId: subjectId,
+      subjectType: subjectType,
+      action: entry.action,
+      frequency: entry.frequency,
+      nextDue: due,
+      timesPerDay: entry.timesPerDay,
+      reminders: entry.reminders,
+      everyDays: entry.everyDays,
+      weekdays: entry.weekdays,
+      lastDone: entry.lastDone,
+      lead: entry.lead,
+    );
+    _store.schedules.add(schedule);
+    final slots = [...entry.reminders]..sort((a, b) => a.hour.compareTo(b.hour));
+    final chosen = slots.isEmpty ? <CareSlot>[CareSlot.morning] : slots;
+    final times = chosen
+        .map((slot) => DateTime(due.year, due.month, due.day, slot.hour))
+        .where((at) => !at.isBefore(now))
+        .toList();
+    final dues = times.isEmpty ? [due] : times;
+    for (final at in dues) {
       _store.tasks.add(
         CareTask(
           id: _store.nextId('task'),
@@ -120,11 +129,12 @@ class MockCareService extends CareService {
           subjectType: subjectType,
           subjectName: subjectName,
           action: entry.action,
-          dueAt: due,
+          dueAt: at,
           status: TaskStatus.due,
         ),
       );
     }
+  }
     notifyListeners();
   }
 

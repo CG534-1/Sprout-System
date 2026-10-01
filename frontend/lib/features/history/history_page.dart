@@ -9,6 +9,7 @@ import 'package:sprout/data/services/care_service.dart';
 import 'package:sprout/data/services/pet_service.dart';
 import 'package:sprout/data/services/plant_service.dart';
 import 'package:sprout/features/shell/care_nav.dart';
+import 'package:sprout/features/shell/quiet_card.dart';
 
 const _mint = Color(0xFF87DB6C);
 
@@ -123,7 +124,13 @@ class _HistoryPageState extends State<HistoryPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        monthCount == 1 ? '1 care moment' : '$monthCount care moments',
+                        _entries.isEmpty
+                            ? 'No moments yet'
+                            : monthCount == 0
+                            ? 'None this month'
+                            : monthCount == 1
+                            ? '1 care moment'
+                            : '$monthCount care moments',
                         style: GoogleFonts.fraunces(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
@@ -132,46 +139,53 @@ class _HistoryPageState extends State<HistoryPage> {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        'completed this month',
+                        _entries.isEmpty
+                            ? 'Completed care will gather here.'
+                            : 'completed this month',
                         style: GoogleFonts.dmSans(fontSize: 11, height: 1.5, color: _mint),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 25),
-                Row(
-                  children: [
-                    _HistoryChip(
-                      label: 'All',
-                      selected: _filter == _Filter.all,
-                      onTap: () => setState(() => _filter = _Filter.all),
-                    ),
-                    const SizedBox(width: 7),
-                    _HistoryChip(
-                      label: 'Plants',
-                      selected: _filter == _Filter.plants,
-                      onTap: () => setState(() => _filter = _Filter.plants),
-                    ),
-                    const SizedBox(width: 7),
-                    _HistoryChip(
-                      label: 'Pets',
-                      selected: _filter == _Filter.pets,
-                      onTap: () => setState(() => _filter = _Filter.pets),
-                    ),
-                  ],
-                ),
+                if (_entries.isNotEmpty)
+                  Row(
+                    children: [
+                      _HistoryChip(
+                        label: 'All',
+                        selected: _filter == _Filter.all,
+                        onTap: () => setState(() => _filter = _Filter.all),
+                      ),
+                      const SizedBox(width: 7),
+                      _HistoryChip(
+                        label: 'Plants',
+                        selected: _filter == _Filter.plants,
+                        onTap: () => setState(() => _filter = _Filter.plants),
+                      ),
+                      const SizedBox(width: 7),
+                      _HistoryChip(
+                        label: 'Pets',
+                        selected: _filter == _Filter.pets,
+                        onTap: () => setState(() => _filter = _Filter.pets),
+                      ),
+                    ],
+                  ),
                 if (_loading)
                   const Padding(
                     padding: EdgeInsets.only(top: 28),
                     child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
                   )
+                else if (_entries.isEmpty)
+                  const QuietCard(
+                    icon: Icons.history,
+                    title: 'History starts later',
+                    body: 'When you complete a task, it will be kept here.',
+                  )
                 else if (visible.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 28),
-                    child: Text(
-                      'Nothing completed yet.',
-                      style: GoogleFonts.dmSans(fontSize: 14, color: AppColors.onboardingBody),
-                    ),
+                  const QuietCard(
+                    icon: Icons.history,
+                    title: 'Nothing in this filter',
+                    body: 'Completed care for the other group is still under All.',
                   )
                 else
                   for (var index = 0; index < visible.length; index++) ...[

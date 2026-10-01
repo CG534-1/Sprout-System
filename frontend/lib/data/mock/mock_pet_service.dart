@@ -31,6 +31,7 @@ class MockPetService extends PetService {
   Future<Pet> createPet({
     required String name,
     required String species,
+    String breed = '',
     String? notes,
     Uint8List? photoBytes,
   }) async {
@@ -44,6 +45,7 @@ class MockPetService extends PetService {
       id: _store.nextId('pet'),
       name: trimmedName,
       species: trimmedSpecies,
+      breed: breed.trim(),
       notes: emptyToNull(notes),
       photoBytes: photoBytes,
       createdAt: DateTime.now(),

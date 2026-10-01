@@ -129,6 +129,20 @@ export function nextDue(entry, offsetMinutes, now = new Date()) {
   ).toISOString();
 }
 
+export function duesOnCycle(entry, offsetMinutes, now = new Date()) {
+  const first = nextDue(entry, offsetMinutes, now);
+  const day = localDayKey(first, offsetMinutes);
+  const [year, month, date] = day.split('-').map(Number);
+  const reminders = [...(entry.reminders ?? [])].sort(
+    (a, b) => (SLOT_HOUR[a] ?? 99) - (SLOT_HOUR[b] ?? 99),
+  );
+  const slots = reminders.length ? reminders : ['morning'];
+  const times = slots
+    .map((slot) => wallToUtc(year, month, date, SLOT_HOUR[slot] ?? 9, offsetMinutes).toISOString())
+    .filter((instant) => new Date(instant).getTime() >= now.getTime());
+  return times.length ? times : [first];
+}
+
 export function leadMinutes(label) {
   if (label === '15 min before') return 15;
   if (label === '1 hour before') return 60;

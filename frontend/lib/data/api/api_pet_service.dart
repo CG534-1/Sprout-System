@@ -30,6 +30,7 @@ class ApiPetService extends PetService {
   Future<Pet> createPet({
     required String name,
     required String species,
+    String breed = '',
     String? notes,
     Uint8List? photoBytes,
   }) async {
@@ -40,6 +41,7 @@ class ApiPetService extends PetService {
       body: {
         'name': name,
         'species': species,
+        'breed': breed,
         'notes': notes,
         'photoPath': photoPath,
       },
@@ -57,6 +59,7 @@ class ApiPetService extends PetService {
       body: {
         'name': pet.name,
         'species': pet.species,
+        'breed': pet.breed,
         'notes': pet.notes,
         if (photoPath != null) 'photoPath': photoPath,
       },

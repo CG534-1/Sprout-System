@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/widgets/person_avatar.dart';
+import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/auth_validators.dart';
@@ -96,13 +97,37 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
     });
     if (nameError != null || emailError != null || _saving) return;
     setState(() => _saving = true);
+    final auth = context.read<AuthService>();
+    final previous = auth.currentUser?.email ?? '';
+    final next = _email.text.trim();
+    final changing = next.toLowerCase() != previous.toLowerCase();
+    final avatarUrl = _photo == null && !_keepRemoteAvatar
+        ? (_avatar >= 0 ? _avatars[_avatar] : '')
+        : null;
     try {
-      await context.read<AuthService>().updateDetails(
+      await auth.updateDetails(
         name: _name.text,
-        email: _email.text,
-        avatarUrl: _photo == null && !_keepRemoteAvatar
-            ? (_avatar >= 0 ? _avatars[_avatar] : '')
-            : null,
+        email: changing ? previous : next,
+        avatarUrl: avatarUrl,
+        avatarBytes: _photo,
+      );
+      if (!mounted) return;
+      if (!changing) {
+        context.pop();
+        return;
+      }
+      await auth.requestEmailChange(email: next);
+      if (!mounted) return;
+      setState(() => _saving = false);
+      final ok = await context.push<bool>(
+        '${AppRoutes.verifyEmail}?email=${Uri.encodeQueryComponent(next)}&current=${Uri.encodeQueryComponent(previous)}&purpose=email_change',
+      );
+      if (!mounted || ok != true) return;
+      setState(() => _saving = true);
+      await auth.updateDetails(
+        name: _name.text,
+        email: next,
+        avatarUrl: avatarUrl,
         avatarBytes: _photo,
       );
       if (mounted) context.pop();

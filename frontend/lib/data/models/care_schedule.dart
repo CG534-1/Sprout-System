@@ -13,6 +13,7 @@ class CareSchedule {
     this.everyDays,
     this.weekdays = const [],
     this.lastDone,
+    this.lead,
   });
 
   final String id;
@@ -26,6 +27,7 @@ class CareSchedule {
   final int? everyDays;
   final List<int> weekdays;
   final DateTime? lastDone;
+  final String? lead;
 
   String get whenLabel {
     if (frequency == CareFrequency.custom && everyDays != null) {
@@ -51,6 +53,7 @@ class CareSchedule {
       'everyDays': everyDays,
       'weekdays': weekdays,
       'lastDone': lastDone?.toIso8601String(),
+      'lead': lead,
     };
   }
 
@@ -75,6 +78,7 @@ class CareSchedule {
       lastDone: json['lastDone'] == null
           ? null
           : DateTime.parse(json['lastDone'] as String),
+      lead: json['lead'] as String?,
     );
   }
 }
@@ -88,6 +92,7 @@ class CarePlanEntry {
     this.everyDays,
     this.weekdays = const [],
     this.lastDone,
+    this.lead,
   });
 
   final CareAction action;
@@ -97,4 +102,5 @@ class CarePlanEntry {
   final int? everyDays;
   final List<int> weekdays;
   final DateTime? lastDone;
+  final String? lead;
 }

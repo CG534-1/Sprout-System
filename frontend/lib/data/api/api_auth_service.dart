@@ -25,6 +25,28 @@ class ApiAuthService extends AuthService {
   String? _pendingLast;
   String? _pendingEmail;
   StreamSubscription<AuthState>? _authSub;
+  var _holdRouting = false;
+  var _routingDirty = false;
+
+  @override
+  void holdRouting() => _holdRouting = true;
+
+  @override
+  void releaseRouting() {
+    _holdRouting = false;
+    if (!_routingDirty) return;
+    _routingDirty = false;
+    super.notifyListeners();
+  }
+
+  @override
+  void notifyListeners() {
+    if (_holdRouting) {
+      _routingDirty = true;
+      return;
+    }
+    super.notifyListeners();
+  }
 
   static const _splashKey = 'sprout.splash_seen';
   static const _onboardingKey = 'sprout.onboarding_complete';
@@ -181,11 +203,46 @@ class ApiAuthService extends AuthService {
   }
 
   @override
-  Future<void> resendEmailCode({required String email, required bool recovery}) async {
+  Future<void> requestEmailChange({required String email}) async {
     await _guard(() async {
       final trimmed = email.trim();
       if (trimmed.isEmpty || !trimmed.contains('@')) {
         throw const AppException('Enter a valid email.');
+      }
+      await _supabase.auth.updateUser(UserAttributes(email: trimmed));
+    });
+  }
+
+  @override
+  Future<String?> confirmEmailChange({required String email, required String code}) async {
+    await _guard(() async {
+      final token = code.trim();
+      if (token.length != 6 || int.tryParse(token) == null) {
+        throw const AppException('Enter the 6-digit code from your email.');
+      }
+      await _supabase.auth.verifyOTP(
+        email: email.trim(),
+        token: token,
+        type: OtpType.emailChange,
+      );
+    });
+    return _supabase.auth.currentUser?.email;
+  }
+
+  @override
+  Future<void> resendEmailCode({
+    required String email,
+    required bool recovery,
+    bool emailChange = false,
+  }) async {
+    await _guard(() async {
+      final trimmed = email.trim();
+      if (trimmed.isEmpty || !trimmed.contains('@')) {
+        throw const AppException('Enter a valid email.');
+      }
+      if (emailChange) {
+        await _supabase.auth.resend(type: OtpType.emailChange, email: trimmed);
+        return;
       }
       if (recovery) {
         await _supabase.auth.resetPasswordForEmail(trimmed);
@@ -291,9 +348,6 @@ class ApiAuthService extends AuthService {
       if (trimmedName.isEmpty) throw const AppException('Enter your name.');
       if (trimmedEmail.isEmpty || !trimmedEmail.contains('@')) {
         throw const AppException('Enter a valid email.');
-      }
-      if (_user != null && trimmedEmail != _user!.email) {
-        await _supabase.auth.updateUser(UserAttributes(email: trimmedEmail));
       }
       await _saveDetails(
         name: trimmedName,
@@ -415,6 +469,10 @@ class ApiAuthService extends AuthService {
     } on AppException {
       rethrow;
     } on AuthException catch (error) {
+      final message = error.message.toLowerCase();
+      if (message.contains('expired') || message.contains('invalid')) {
+        throw const AppException('That code has expired. Resend it and try again.');
+      }
       throw AppException(error.message);
     } on StorageException catch (error) {
       throw AppException(error.message);

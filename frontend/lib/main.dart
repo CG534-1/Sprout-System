@@ -13,7 +13,15 @@ Future<void> main() async {
     runApp(const _ConfigMissing());
     return;
   }
-  await Supabase.initialize(url: config.supabaseUrl, publishableKey: config.supabaseAnonKey);
+  await Supabase.initialize(
+    url: config.supabaseUrl,
+    publishableKey: config.supabaseAnonKey,
+    // The email code is verified directly. PKCE stores a challenge that this
+    // verify call does not send back, so Supabase rejects a valid code.
+    authOptions: const FlutterAuthClientOptions(
+      authFlowType: AuthFlowType.implicit,
+    ),
+  );
   final services = AppServices.remote(
     supabase: Supabase.instance.client,
     apiBase: config.apiBaseUrl,

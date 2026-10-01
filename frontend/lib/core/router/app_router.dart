@@ -45,6 +45,7 @@ GoRouter createAppRouter(AuthService auth) {
         path: AppRoutes.verifyEmail,
         builder: (context, state) => OtpPage(
           email: state.uri.queryParameters['email'] ?? '',
+          currentEmail: state.uri.queryParameters['current'] ?? '',
           purpose: state.uri.queryParameters['purpose'] ?? 'signup',
         ),
       ),
@@ -101,7 +102,11 @@ String? _redirect(AuthService auth, String location) {
   }
 
   if (auth.pendingSignup) {
-    if (location == AppRoutes.signUp || location == AppRoutes.signIn) return null;
+    if (location == AppRoutes.signUp ||
+        location == AppRoutes.signIn ||
+        location == AppRoutes.verifyEmail) {
+      return null;
+    }
     return AppRoutes.signUp;
   }
 

@@ -90,7 +90,12 @@ class _DetailSheet extends StatelessWidget {
               children: [
                 _Photo(subject: subject, plant: plant),
                 if (subject.species.trim().isNotEmpty)
-                  _DetailLine(label: 'SPECIES', value: subject.species),
+                  _DetailLine(
+                    label: plant ? 'SPECIES' : 'PET TYPE',
+                    value: subject.species,
+                  ),
+                if (!plant && subject.breed.trim().isNotEmpty)
+                  _DetailLine(label: 'BREED', value: subject.breed),
                 if (plant && (subject.location?.trim().isNotEmpty ?? false))
                   _DetailLine(label: 'WHERE IT LIVES', value: subject.location!),
                 if (subject.notes?.trim().isNotEmpty ?? false)
@@ -115,13 +120,14 @@ class _DetailSheet extends StatelessWidget {
                     CareLabel(_heading(schedule.action)),
                     _ScheduleCard(
                       rows: [
+                        _ScheduleRow(icon: '🗓', title: 'Frequency', value: schedule.whenLabel),
                         if (schedule.timesPerDay != null)
                           _ScheduleRow(
-                            icon: '🗓',
-                            title: 'How often',
-                            value: '${schedule.timesPerDay}x / day',
+                            icon: '↺',
+                            title: 'Times',
+                            value: '${schedule.timesPerDay}x',
                           ),
-                        if (schedule.reminders.isNotEmpty)
+                        if (schedule.reminders.isNotEmpty || (schedule.lead?.isNotEmpty ?? false))
                           _ScheduleRow(
                             icon: '⏰',
                             title: 'Reminder',
@@ -196,12 +202,80 @@ class _DetailSheet extends StatelessWidget {
   }
 
   String _reminders(CareSchedule schedule) {
-    return schedule.reminders
+    final times = schedule.reminders
         .map((slot) => '${slot.mark} ${slot.label} (${slot.clock})')
         .join(', ');
+    final lead = schedule.lead;
+    if (lead == null || lead.isEmpty) return times;
+    if (times.isEmpty) return lead;
+    return '$lead · $times';
   }
 
   Future<void> _remove(BuildContext context) async {
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return CareSheet(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(22, 8, 22, 24 + MediaQuery.paddingOf(sheetContext).bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const CareSheetHandle(),
+                const SizedBox(height: 8),
+                Text(
+                  'Remove ${subject.name}?',
+                  style: GoogleFonts.fraunces(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w600,
+                    color: careInk,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Their photo, notes, and care schedule are removed with them.',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 14,
+                    height: 1.45,
+                    color: AppColors.onboardingBody,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: careRemove,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: () => Navigator.of(sheetContext).pop(true),
+                  child: Text(
+                    'Remove ${subject.name}',
+                    style: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => Navigator.of(sheetContext).pop(false),
+                  child: Text(
+                    'Keep them',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (confirmed != true || !context.mounted) return;
     if (subject.type == CareSubjectType.plant) {
       await context.read<PlantService>().deletePlant(subject.id);
     } else {
