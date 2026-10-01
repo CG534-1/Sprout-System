@@ -6,8 +6,11 @@ import 'package:provider/provider.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/widgets/person_avatar.dart';
 import 'package:sprout/core/widgets/sprout_check.dart';
+import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/data/models/care_enums.dart';
 import 'package:sprout/data/models/care_task.dart';
+import 'package:sprout/data/models/pet.dart';
+import 'package:sprout/data/models/plant.dart';
 import 'package:sprout/data/models/user_profile.dart';
 import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/data/services/care_service.dart';
@@ -20,7 +23,6 @@ import 'package:sprout/features/shell/care_nav.dart';
 import 'package:sprout/features/shell/quiet_card.dart';
 import 'package:sprout/features/today/bell_sheet.dart';
 import 'package:sprout/features/today/calendar_sheet.dart';
-
 
 class TodayPage extends StatefulWidget {
   const TodayPage({super.key});
@@ -69,27 +71,46 @@ class _TodayPageState extends State<TodayPage> {
     final pets = _pets ?? context.read<PetService>();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final bundled = await (
-      care.tasksFor(today),
-      plants.listPlants(),
-      pets.listPets(),
-      care.upcomingAfter(today),
-    ).wait;
+    List<CareTask> tasks;
+    List<Plant> plantList;
+    List<Pet> petList;
+    CareTask? upcoming;
+    try {
+      final loaded = await (
+        care.tasksFor(today),
+        plants.listPlants(),
+        pets.listPets(),
+        care.upcomingAfter(today),
+      ).wait;
+      tasks = loaded.$1;
+      plantList = loaded.$2;
+      petList = loaded.$3;
+      upcoming = loaded.$4;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      showSproutToast(
+        context,
+        'Your care could not load. Check your connection and try again.',
+        error: true,
+      );
+      return;
+    }
     if (!mounted) return;
     final photos = <String, String>{};
-    for (final plant in bundled.$2) {
+    for (final plant in plantList) {
       final url = plant.photoUrl;
       if (url != null) photos[plant.id] = url;
     }
-    for (final pet in bundled.$3) {
+    for (final pet in petList) {
       final url = pet.photoUrl;
       if (url != null) photos[pet.id] = url;
     }
     setState(() {
-      _today = List<CareTask>.of(bundled.$1)
+      _today = List<CareTask>.of(tasks)
         ..sort((a, b) => a.dueAt.compareTo(b.dueAt));
       _photos = photos;
-      _upcoming = bundled.$4;
+      _upcoming = upcoming;
       _loading = false;
     });
     if (notes) await _loadNotes();
@@ -112,13 +133,16 @@ class _TodayPageState extends State<TodayPage> {
         for (final item in _today)
           if (item.id == task.id)
             item.copyWith(
-              status: item.status == TaskStatus.done ? TaskStatus.due : TaskStatus.done,
+              status: item.status == TaskStatus.done
+                  ? TaskStatus.due
+                  : TaskStatus.done,
             )
           else
             item,
       ];
     });
     final care = context.read<CareService>();
+    final toast = sproutToaster(context);
     try {
       if (task.status == TaskStatus.done) {
         await care.reopenTask(task.id);
@@ -126,7 +150,12 @@ class _TodayPageState extends State<TodayPage> {
         await care.completeTask(task.id);
       }
     } catch (_) {
-      if (mounted) await _load(notes: false);
+      if (!mounted) return;
+      toast.show(
+        'That did not save. Check your connection and tap again.',
+        error: true,
+      );
+      await _load(notes: false);
     }
   }
 
@@ -170,10 +199,7 @@ class _TodayPageState extends State<TodayPage> {
                     title: 'Your home is empty',
                     body: 'Add a plant or a pet. Their care will show up here.',
                     action: 'Add someone',
-                    onAction: () async {
-                      await showAddCareSheet(context);
-                      if (mounted) await _load();
-                    },
+                    onAction: () => showAddCareSheet(context),
                   ),
                 for (final task in _today) ...[
                   _TaskCard(
@@ -333,7 +359,10 @@ class _Bell extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: AppColors.sproutGreen,
                       shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFFEEF8F0), width: 0.8),
+                      border: Border.all(
+                        color: const Color(0xFFEEF8F0),
+                        width: 0.8,
+                      ),
                     ),
                     child: Text(
                       unread > 9 ? '9' : '$unread',
@@ -380,7 +409,11 @@ class _MemojiAvatar extends StatelessWidget {
 }
 
 class _Hero extends StatelessWidget {
-  const _Hero({required this.count, required this.caughtUp, required this.quiet});
+  const _Hero({
+    required this.count,
+    required this.caughtUp,
+    required this.quiet,
+  });
 
   final int count;
   final bool caughtUp;
@@ -460,7 +493,9 @@ class _Hero extends StatelessWidget {
                   style: GoogleFonts.dmSans(
                     fontSize: 12,
                     height: 1.5,
-                    color: Colors.white.withValues(alpha: caughtUp ? 0.95 : 0.7),
+                    color: Colors.white.withValues(
+                      alpha: caughtUp ? 0.95 : 0.7,
+                    ),
                   ),
                 ),
               ],
@@ -495,7 +530,10 @@ class _SectionTitle extends StatelessWidget {
         if (trailing is String && (trailing as String).isNotEmpty)
           Text(
             trailing as String,
-            style: GoogleFonts.dmMono(fontSize: 10, color: AppColors.onboardingBody),
+            style: GoogleFonts.dmMono(
+              fontSize: 10,
+              color: AppColors.onboardingBody,
+            ),
           ),
       ],
     );
@@ -569,7 +607,11 @@ class _TaskCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text.rich(
                     TextSpan(
-                      style: GoogleFonts.dmSans(fontSize: 14, color: AppColors.ink, height: 1.5),
+                      style: GoogleFonts.dmSans(
+                        fontSize: 14,
+                        color: AppColors.ink,
+                        height: 1.5,
+                      ),
                       children: [
                         TextSpan(text: '${task.action.label} '),
                         TextSpan(
@@ -629,7 +671,11 @@ class _QuietLine extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: GoogleFonts.dmSans(fontSize: 14, height: 1.4, color: AppColors.onboardingBody),
+      style: GoogleFonts.dmSans(
+        fontSize: 14,
+        height: 1.4,
+        color: AppColors.onboardingBody,
+      ),
     );
   }
 }

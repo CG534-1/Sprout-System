@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:sprout/core/app_exception.dart';
+import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
+import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/data/models/care_enums.dart';
 import 'package:sprout/data/models/care_schedule.dart';
 import 'package:sprout/data/services/pet_service.dart';
@@ -38,7 +42,9 @@ class _DetailSheet extends StatelessWidget {
           Container(
             padding: const EdgeInsets.fromLTRB(22, 18, 22, 14),
             decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: AppColors.dotIdle, width: 0.8)),
+              border: Border(
+                bottom: BorderSide(color: AppColors.dotIdle, width: 0.8),
+              ),
             ),
             child: Row(
               children: [
@@ -54,14 +60,24 @@ class _DetailSheet extends StatelessWidget {
                 ),
                 GestureDetector(
                   onTap: () {
+                    final router = GoRouter.of(host);
                     Navigator.of(context).pop();
-                    showAddCareSheet(host, existing: subject);
+                    router.push(
+                      AppRoutes.careDetails,
+                      extra: CareDetailsArgs(plant: plant, existing: subject),
+                    );
                   },
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.sproutGreen, width: 0.8),
+                      border: Border.all(
+                        color: AppColors.sproutGreen,
+                        width: 0.8,
+                      ),
                     ),
                     child: Text(
                       'Edit',
@@ -97,15 +113,26 @@ class _DetailSheet extends StatelessWidget {
                 if (!plant && subject.breed.trim().isNotEmpty)
                   _DetailLine(label: 'BREED', value: subject.breed),
                 if (plant && (subject.location?.trim().isNotEmpty ?? false))
-                  _DetailLine(label: 'WHERE IT LIVES', value: subject.location!),
+                  _DetailLine(
+                    label: 'WHERE IT LIVES',
+                    value: subject.location!,
+                  ),
                 if (subject.notes?.trim().isNotEmpty ?? false)
                   _DetailLine(label: 'NOTES', value: subject.notes!),
                 if (plant && water != null) ...[
                   const CareLabel('WATERING SCHEDULE'),
                   _ScheduleCard(
                     rows: [
-                      _ScheduleRow(icon: '🗓', title: 'Frequency', value: water.whenLabel),
-                      _ScheduleRow(icon: '⏰', title: 'Reminder', value: _reminders(water)),
+                      _ScheduleRow(
+                        icon: '🗓',
+                        title: 'Frequency',
+                        value: water.whenLabel,
+                      ),
+                      _ScheduleRow(
+                        icon: '⏰',
+                        title: 'Reminder',
+                        value: _reminders(water),
+                      ),
                       if (water.lastDone != null)
                         _ScheduleRow(
                           icon: '💧',
@@ -120,14 +147,19 @@ class _DetailSheet extends StatelessWidget {
                     CareLabel(_heading(schedule.action)),
                     _ScheduleCard(
                       rows: [
-                        _ScheduleRow(icon: '🗓', title: 'Frequency', value: schedule.whenLabel),
+                        _ScheduleRow(
+                          icon: '🗓',
+                          title: 'Frequency',
+                          value: schedule.whenLabel,
+                        ),
                         if (schedule.timesPerDay != null)
                           _ScheduleRow(
                             icon: '↺',
                             title: 'Times',
                             value: '${schedule.timesPerDay}x',
                           ),
-                        if (schedule.reminders.isNotEmpty || (schedule.lead?.isNotEmpty ?? false))
+                        if (schedule.reminders.isNotEmpty ||
+                            (schedule.lead?.isNotEmpty ?? false))
                           _ScheduleRow(
                             icon: '⏰',
                             title: 'Reminder',
@@ -137,7 +169,8 @@ class _DetailSheet extends StatelessWidget {
                           _ScheduleRow(
                             icon: '✓',
                             title: _lastTitle(schedule.action),
-                            value: DateFormat('MMM d, y').format(schedule.lastDone!),
+                            value: DateFormat('MMM d, y')
+                                .format(schedule.lastDone!),
                           ),
                       ],
                     ),
@@ -219,7 +252,12 @@ class _DetailSheet extends StatelessWidget {
       builder: (sheetContext) {
         return CareSheet(
           child: Padding(
-            padding: EdgeInsets.fromLTRB(22, 8, 22, 24 + MediaQuery.paddingOf(sheetContext).bottom),
+            padding: EdgeInsets.fromLTRB(
+              22,
+              8,
+              22,
+              24 + MediaQuery.paddingOf(sheetContext).bottom,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -249,12 +287,17 @@ class _DetailSheet extends StatelessWidget {
                     backgroundColor: careRemove,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
                   onPressed: () => Navigator.of(sheetContext).pop(true),
                   child: Text(
                     'Remove ${subject.name}',
-                    style: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w600),
+                    style: GoogleFonts.dmSans(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -276,12 +319,20 @@ class _DetailSheet extends StatelessWidget {
       },
     );
     if (confirmed != true || !context.mounted) return;
-    if (subject.type == CareSubjectType.plant) {
-      await context.read<PlantService>().deletePlant(subject.id);
-    } else {
-      await context.read<PetService>().deletePet(subject.id);
+    final toast = sproutToaster(context);
+    final plants = context.read<PlantService>();
+    final pets = context.read<PetService>();
+    Navigator.of(context).pop();
+    try {
+      if (subject.type == CareSubjectType.plant) {
+        await plants.deletePlant(subject.id);
+      } else {
+        await pets.deletePet(subject.id);
+      }
+      toast.show('${subject.name} is no longer in your care.');
+    } on AppException catch (error) {
+      toast.show(error.message, error: true);
     }
-    if (context.mounted) Navigator.of(context).pop();
   }
 }
 
@@ -327,7 +378,10 @@ class _Photo extends StatelessWidget {
               left: 12,
               bottom: 12,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0x73000000),
                   borderRadius: BorderRadius.circular(999),
@@ -383,7 +437,10 @@ class _ScheduleCard extends StatelessWidget {
                 border: index == rows.length - 1
                     ? null
                     : Border(
-                        bottom: BorderSide(color: AppColors.dotIdle, width: 0.8),
+                        bottom: BorderSide(
+                          color: AppColors.dotIdle,
+                          width: 0.8,
+                        ),
                       ),
               ),
               child: Row(

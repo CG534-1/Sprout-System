@@ -3,24 +3,30 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:sprout/core/app_exception.dart';
+import 'package:sprout/core/photo_picker.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
+import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/auth_validators.dart';
 import 'package:sprout/features/auth/auth_widgets.dart';
 
 class SignUpPage extends StatefulWidget {
-  const SignUpPage({super.key});
+  const SignUpPage({super.key, this.step = 0});
+
+  /// Which step the URL is asking for. Keeping it in the address means the
+  /// browser back button walks the stepper instead of leaving the flow.
+  final int step;
 
   @override
   State<SignUpPage> createState() => _SignUpPageState();
 }
 
 class _SignUpPageState extends State<SignUpPage> {
-  var _step = 0;
+  /// The furthest step unlocked so far, so a hand-typed URL cannot skip ahead.
+  var _reached = 0;
   final _first = TextEditingController();
   final _last = TextEditingController();
   final _email = TextEditingController();
@@ -43,16 +49,21 @@ class _SignUpPageState extends State<SignUpPage> {
   var _continuedAfterCode = false;
   AuthService? _auth;
 
+  int get _step => widget.step.clamp(0, _reached);
+
   @override
   void initState() {
     super.initState();
     _auth = context.read<AuthService>();
     if (_auth!.pendingSignup) {
       _continuedAfterCode = true;
-      _step = 1;
+      _reached = 1;
       _first.text = _auth!.pendingFirst ?? '';
       _last.text = _auth!.pendingLast ?? '';
       _email.text = _auth!.pendingEmail ?? '';
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.step == 0) _goStep(1);
+      });
     }
     _auth!.addListener(_continueAfterCode);
     _first.addListener(_refresh);
@@ -62,11 +73,23 @@ class _SignUpPageState extends State<SignUpPage> {
     _leaveFieldsAlone();
   }
 
+  @override
+  void didUpdateWidget(covariant SignUpPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.step != widget.step) _leaveFieldsAlone();
+  }
+
+  void _goStep(int step) {
+    if (step < 0 || step > 5) return;
+    if (step > _reached) setState(() => _reached = step);
+    context.go(step == 0 ? AppRoutes.signUp : '${AppRoutes.signUp}?step=$step');
+  }
+
   void _continueAfterCode() {
     if (!mounted || _continuedAfterCode || _step != 0) return;
     if (_auth?.pendingSignup != true) return;
     _continuedAfterCode = true;
-    setState(() => _step = 1);
+    _goStep(1);
   }
 
   void _leaveFieldsAlone() {
@@ -103,11 +126,14 @@ class _SignUpPageState extends State<SignUpPage> {
 
   void _back() {
     if (_step == 0) {
-      context.pop();
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go(AppRoutes.signIn);
+      }
       return;
     }
-    setState(() => _step -= 1);
-    _leaveFieldsAlone();
+    _goStep(_step - 1);
   }
 
   Future<void> _openAvatars() async {
@@ -155,24 +181,28 @@ class _SignUpPageState extends State<SignUpPage> {
           lastName: _last.text,
           email: _email.text,
         );
-        if (!mounted) return;
-        final email = Uri.encodeQueryComponent(_email.text.trim());
-        final verified = await context.push<bool>(
-          '${AppRoutes.verifyEmail}?email=$email&purpose=signup',
-        );
-        if (!mounted || verified != true) return;
-        setState(() => _step = 1);
-        _leaveFieldsAlone();
       } on AppException catch (error) {
         if (!mounted) return;
-        setState(() => _emailError = error.message);
-      } finally {
-        if (mounted) setState(() => _submitting = false);
+        setState(() {
+          _emailError = error.message;
+          _submitting = false;
+        });
+        return;
       }
+      if (!mounted) return;
+      // The button is released before the code page opens. A browser back
+      // closes that page without completing this push, so the busy flag
+      // cannot wait on it.
+      setState(() => _submitting = false);
+      final address = Uri.encodeQueryComponent(_email.text.trim());
+      final verified = await context.push<bool>(
+        '${AppRoutes.verifyEmail}?email=$address&purpose=signup',
+      );
+      if (!mounted || verified != true) return;
+      _goStep(1);
       return;
     }
-    setState(() => _step += 1);
-    _leaveFieldsAlone();
+    _goStep(_step + 1);
   }
 
   bool get _canContinue {
@@ -197,13 +227,7 @@ class _SignUpPageState extends State<SignUpPage> {
     return '$start$end'.toUpperCase();
   }
 
-  bool get _passwordReady {
-    final value = _password.text;
-    return value.length >= 8 &&
-        RegExp(r'\d').hasMatch(value) &&
-        RegExp(r'[A-Z]').hasMatch(value) &&
-        RegExp(r'[^A-Za-z0-9]').hasMatch(value);
-  }
+  bool get _passwordReady => PasswordRules.satisfied(_password.text);
 
   Future<void> _create() async {
     if (!_canContinue) return;
@@ -227,6 +251,7 @@ class _SignUpPageState extends State<SignUpPage> {
         });
         return;
       }
+      showSproutToast(context, 'Welcome to Sprout, ${_first.text.trim()}.');
       context.go(AppRoutes.today);
     } on AppException catch (error) {
       if (!mounted) return;
@@ -239,7 +264,15 @@ class _SignUpPageState extends State<SignUpPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Focus(
+    // The stepper is one route, so a system or browser back has to walk the
+    // steps instead of dropping the whole flow.
+    return PopScope(
+      canPop: _step == 0,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop || _step == 0) return;
+        _goStep(_step - 1);
+      },
+      child: Focus(
       autofocus: true,
       child: Scaffold(
       backgroundColor: AppColors.onboardingPaper,
@@ -270,6 +303,7 @@ class _SignUpPageState extends State<SignUpPage> {
                 child: SlabButton(
                   label: _actionLabel,
                   enabled: _canContinue,
+                  busy: _submitting,
                   onPressed: _step == 5 ? _create : _next,
                 ),
               ),
@@ -308,6 +342,7 @@ class _SignUpPageState extends State<SignUpPage> {
             ],
           ),
         ),
+      ),
       ),
       ),
     );
@@ -591,28 +626,7 @@ class _SignUpPageState extends State<SignUpPage> {
           ),
         ),
         const SizedBox(height: 14),
-        SizedBox(
-          width: double.infinity,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: authField,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _RuleChip('8+ characters', value.length >= 8),
-                  _RuleChip('1 number', RegExp(r'\d').hasMatch(value)),
-                  _RuleChip('1 uppercase', RegExp(r'[A-Z]').hasMatch(value)),
-                  _RuleChip('1 special', RegExp(r'[^A-Za-z0-9]').hasMatch(value)),
-                ],
-              ),
-            ),
-          ),
-        ),
+        PasswordRules(value: value),
         const SizedBox(height: 16),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -825,34 +839,6 @@ class _Counter extends StatelessWidget {
   }
 }
 
-class _RuleChip extends StatelessWidget {
-  const _RuleChip(this.label, this.met);
-
-  final String label;
-  final bool met;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: met ? AppColors.primary : const Color(0xFFD7EBD9),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Text(
-          label,
-          style: GoogleFonts.dmSans(
-            fontSize: 11,
-            fontWeight: met ? FontWeight.w700 : FontWeight.w500,
-            color: met ? Colors.white : AppColors.onboardingBody,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 const _avatars = [
   'assets/images/memoji_freckles.png',
   'assets/images/memoji_twists.png',
@@ -875,22 +861,40 @@ class _AvatarPick {
   final Uint8List? bytes;
 }
 
-class _AvatarSheet extends StatelessWidget {
+class _AvatarSheet extends StatefulWidget {
   const _AvatarSheet({required this.selected, this.photo});
 
   final int selected;
   final Uint8List? photo;
 
+  @override
+  State<_AvatarSheet> createState() => _AvatarSheetState();
+}
+
+class _AvatarSheetState extends State<_AvatarSheet> {
+  var _busy = false;
+
+  int get selected => widget.selected;
+
+  Uint8List? get photo => widget.photo;
+
   Future<void> _upload(BuildContext context) async {
-    final file = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1024,
-      imageQuality: 85,
-    );
-    if (file == null || !context.mounted) return;
-    final bytes = await file.readAsBytes();
-    if (!context.mounted) return;
-    Navigator.pop(context, _AvatarPick.photo(bytes));
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final file = await pickCarePhoto();
+      if (!mounted) return;
+      if (file == null) {
+        setState(() => _busy = false);
+        return;
+      }
+      if (!context.mounted) return;
+      Navigator.pop(context, _AvatarPick.photo(file));
+    } on AppException catch (error) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      showSproutToast(context, error.message, error: true);
+    }
   }
 
   @override
@@ -942,6 +946,7 @@ class _AvatarSheet extends StatelessWidget {
                     child: _UploadChoice(
                       photo: photo,
                       selected: selected < 0 && photo != null,
+                      busy: _busy,
                     ),
                   );
                 }
@@ -1008,10 +1013,15 @@ class _AvatarChoice extends StatelessWidget {
 }
 
 class _UploadChoice extends StatelessWidget {
-  const _UploadChoice({required this.photo, required this.selected});
+  const _UploadChoice({
+    required this.photo,
+    required this.selected,
+    this.busy = false,
+  });
 
   final Uint8List? photo;
   final bool selected;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -1029,27 +1039,32 @@ class _UploadChoice extends StatelessWidget {
                       shape: BoxShape.circle,
                     ),
                     child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.file_upload_outlined,
-                            color: AppColors.sproutGreen,
-                            size: 22,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Upload image',
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.dmSans(
-                              fontSize: 11,
-                              height: 1.15,
-                              fontWeight: FontWeight.w600,
+                      child: busy
+                          ? const SproutSpinner(
                               color: AppColors.sproutGreen,
+                              size: 22,
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.file_upload_outlined,
+                                  color: AppColors.sproutGreen,
+                                  size: 22,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Upload image',
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.dmSans(
+                                    fontSize: 11,
+                                    height: 1.15,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.sproutGreen,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                      ),
                     ),
                   )
                 : _MemojiFace(bytes: photo),

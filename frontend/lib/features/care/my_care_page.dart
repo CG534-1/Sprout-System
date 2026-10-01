@@ -132,6 +132,7 @@ class _MyCarePageState extends State<MyCarePage> {
                       ),
                     ),
                     GestureDetector(
+                      key: const Key('add-care'),
                       onTap: () => showAddCareSheet(context),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),

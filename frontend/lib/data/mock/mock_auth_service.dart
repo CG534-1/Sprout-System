@@ -36,6 +36,11 @@ class MockAuthService extends AuthService {
     notifyListeners();
   }
 
+  DateTime? _codeSentAt;
+
+  @override
+  DateTime? get codeSentAt => _codeSentAt;
+
   @override
   Future<void> requestEmailConfirmation({
     required String firstName,
@@ -50,6 +55,7 @@ class MockAuthService extends AuthService {
     if (trimmed.isEmpty || !trimmed.contains('@')) {
       throw const AppException('Enter a valid email.');
     }
+    _codeSentAt = DateTime.now();
   }
 
   @override
@@ -73,6 +79,7 @@ class MockAuthService extends AuthService {
     if (trimmed.isEmpty || !trimmed.contains('@')) {
       throw const AppException('Enter a valid email.');
     }
+    _codeSentAt = DateTime.now();
   }
 
   @override
@@ -93,14 +100,27 @@ class MockAuthService extends AuthService {
     if (trimmed.isEmpty || !trimmed.contains('@')) {
       throw const AppException('Enter a valid email.');
     }
+    _codeSentAt = DateTime.now();
   }
 
   @override
   Future<void> setNewPassword({required String password}) async {
     await _store.pause();
-    if (password.length < 8) throw const AppException('Use at least 8 characters.');
+    if (!_strong(password)) {
+      throw const AppException(
+        'Use 8+ characters with a number, a capital letter, and a symbol.',
+      );
+    }
     _resettingPassword = false;
+    _store.currentUser = null;
     notifyListeners();
+  }
+
+  bool _strong(String value) {
+    return value.length >= 8 &&
+        RegExp(r'\d').hasMatch(value) &&
+        RegExp(r'[A-Z]').hasMatch(value) &&
+        RegExp(r'[^A-Za-z0-9]').hasMatch(value);
   }
 
   var _resettingPassword = false;
@@ -174,12 +194,14 @@ class MockAuthService extends AuthService {
     if (trimmed.isEmpty || !trimmed.contains('@')) {
       throw const AppException('Enter a valid email.');
     }
+    _codeSentAt = DateTime.now();
   }
 
   @override
   Future<void> signOut() async {
     await _store.pause();
     _store.currentUser = null;
+    _resettingPassword = false;
     notifyListeners();
   }
 
@@ -208,7 +230,10 @@ class MockAuthService extends AuthService {
   void _requireCredentials(String email, String password) {
     final trimmed = email.trim();
     if (trimmed.isEmpty || !trimmed.contains('@') || password.length < 6) {
-      throw const AppException('Check your email and password.');
+      throw const AppException(
+        'Those details do not match an account. '
+        'Check your email and password.',
+      );
     }
   }
 }

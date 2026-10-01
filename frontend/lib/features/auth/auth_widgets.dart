@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sprout/core/theme/app_colors.dart';
+import 'package:sprout/core/widgets/sprout_toast.dart';
 
 Color get authInk => AppColors.ink;
 Color get authField => AppColors.field;
@@ -233,11 +234,13 @@ class SlabButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.enabled = true,
+    this.busy = false,
   });
 
   final String label;
   final VoidCallback? onPressed;
   final bool enabled;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -297,7 +300,14 @@ class SlabButton extends StatelessWidget {
                               ),
                             ),
                           ),
-                          const ButtonArrow(),
+                          if (busy)
+                            const SizedBox(
+                              width: 40,
+                              height: 40,
+                              child: Center(child: SproutSpinner()),
+                            )
+                          else
+                            const ButtonArrow(),
                         ],
                       ),
                     ),
@@ -306,6 +316,74 @@ class SlabButton extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The password rule chips shared by sign up and reset password.
+class PasswordRules extends StatelessWidget {
+  const PasswordRules({super.key, required this.value});
+
+  final String value;
+
+  static bool satisfied(String value) {
+    return value.length >= 8 &&
+        RegExp(r'\d').hasMatch(value) &&
+        RegExp(r'[A-Z]').hasMatch(value) &&
+        RegExp(r'[^A-Za-z0-9]').hasMatch(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: authField,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _RuleChip('8+ characters', value.length >= 8),
+              _RuleChip('1 number', RegExp(r'\d').hasMatch(value)),
+              _RuleChip('1 uppercase', RegExp(r'[A-Z]').hasMatch(value)),
+              _RuleChip('1 special', RegExp(r'[^A-Za-z0-9]').hasMatch(value)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RuleChip extends StatelessWidget {
+  const _RuleChip(this.label, this.met);
+
+  final String label;
+  final bool met;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: met ? AppColors.primary : const Color(0xFFD7EBD9),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Text(
+          label,
+          style: GoogleFonts.dmSans(
+            fontSize: 11,
+            fontWeight: met ? FontWeight.w700 : FontWeight.w500,
+            color: met ? Colors.white : AppColors.onboardingBody,
+          ),
         ),
       ),
     );

@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/widgets/person_avatar.dart';
+import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/theme/theme_controller.dart';
 import 'package:sprout/data/models/care_enums.dart';
 import 'package:sprout/data/models/user_profile.dart';
 import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/care/care_sheet.dart';
-
 
 class NotificationsSheet extends StatefulWidget {
   const NotificationsSheet({
@@ -26,7 +27,8 @@ class NotificationsSheet extends StatefulWidget {
   final bool overdue;
   final bool summary;
   final bool tips;
-  final void Function(bool reminders, bool overdue, bool summary, bool tips) onChanged;
+  final void Function(bool reminders, bool overdue, bool summary, bool tips)
+  onChanged;
 
   @override
   State<NotificationsSheet> createState() => _NotificationsSheetState();
@@ -57,13 +59,22 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
           const CareSheetHandle(),
           const _SheetTitle('Notifications'),
           Padding(
-            padding: EdgeInsets.fromLTRB(22, 20, 22, 32 + MediaQuery.paddingOf(context).bottom),
+            padding: EdgeInsets.fromLTRB(
+              22,
+              20,
+              22,
+              32 + MediaQuery.paddingOf(context).bottom,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Choose what Sprout keeps you in the loop about.',
-                  style: GoogleFonts.dmSans(fontSize: 13, height: 1.5, color: AppColors.onboardingBody),
+                  style: GoogleFonts.dmSans(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: AppColors.onboardingBody,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 _ToggleRow(
@@ -133,13 +144,22 @@ class _PreferencesSheetState extends State<PreferencesSheet> {
           const CareSheetHandle(),
           const _SheetTitle('Care preferences'),
           Padding(
-            padding: EdgeInsets.fromLTRB(22, 20, 22, 32 + MediaQuery.paddingOf(context).bottom),
+            padding: EdgeInsets.fromLTRB(
+              22,
+              20,
+              22,
+              32 + MediaQuery.paddingOf(context).bottom,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Set your default rhythm. You can override these on any plant or pet.',
-                  style: GoogleFonts.dmSans(fontSize: 13, height: 1.5, color: AppColors.onboardingBody),
+                  style: GoogleFonts.dmSans(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: AppColors.onboardingBody,
+                  ),
                 ),
                 const SizedBox(height: 22),
                 Text(
@@ -186,7 +206,11 @@ class _PreferencesSheetState extends State<PreferencesSheet> {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    for (final lead in ['15 min before', '30 min before', '1 hour before'])
+                    for (final lead in [
+                      '15 min before',
+                      '30 min before',
+                      '1 hour before',
+                    ])
                       _LeadChip(
                         label: lead,
                         selected: _lead == lead,
@@ -222,7 +246,12 @@ class AccountSheet extends StatelessWidget {
           const CareSheetHandle(),
           const _SheetTitle('Account & security'),
           Padding(
-            padding: EdgeInsets.fromLTRB(22, 20, 22, 32 + MediaQuery.paddingOf(context).bottom),
+            padding: EdgeInsets.fromLTRB(
+              22,
+              20,
+              22,
+              32 + MediaQuery.paddingOf(context).bottom,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -250,7 +279,10 @@ class AccountSheet extends StatelessWidget {
                             ),
                             Text(
                               email,
-                              style: GoogleFonts.dmSans(fontSize: 12, color: AppColors.onboardingBody),
+                              style: GoogleFonts.dmSans(
+                                fontSize: 12,
+                                color: AppColors.onboardingBody,
+                              ),
                             ),
                           ],
                         ),
@@ -314,7 +346,12 @@ Future<void> showSignOutSheet(BuildContext context) {
     builder: (sheetContext) {
       return CareSheet(
         child: Padding(
-          padding: EdgeInsets.fromLTRB(22, 0, 22, 28 + MediaQuery.paddingOf(sheetContext).bottom),
+          padding: EdgeInsets.fromLTRB(
+            22,
+            0,
+            22,
+            28 + MediaQuery.paddingOf(sheetContext).bottom,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -332,7 +369,11 @@ Future<void> showSignOutSheet(BuildContext context) {
               const SizedBox(height: 8),
               Text(
                 'You will need to sign in again to see today\'s care.',
-                style: GoogleFonts.dmSans(fontSize: 14, height: 1.45, color: AppColors.onboardingBody),
+                style: GoogleFonts.dmSans(
+                  fontSize: 14,
+                  height: 1.45,
+                  color: AppColors.onboardingBody,
+                ),
               ),
               const SizedBox(height: 22),
               Row(
@@ -344,25 +385,23 @@ Future<void> showSignOutSheet(BuildContext context) {
                         foregroundColor: AppColors.ink,
                         side: BorderSide(color: AppColors.dotIdle),
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
-                      child: Text('Cancel', style: GoogleFonts.dmSans(fontWeight: FontWeight.w600)),
+                      child: Text(
+                        'Cancel',
+                        style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: FilledButton(
-                      onPressed: () async {
-                        await sheetContext.read<AuthService>().signOut();
-                        if (sheetContext.mounted) sheetContext.go(AppRoutes.signIn);
-                      },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: careRemove,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                      child: Text('Sign out', style: GoogleFonts.dmSans(fontWeight: FontWeight.w600)),
+                    child: _DangerAction(
+                      label: 'Sign out',
+                      busyLabel: 'Signing out',
+                      done: 'Signed out. See you soon.',
+                      run: (auth) => auth.signOut(),
                     ),
                   ),
                 ],
@@ -383,7 +422,12 @@ Future<void> showDeleteAccountSheet(BuildContext context) {
     builder: (sheetContext) {
       return CareSheet(
         child: Padding(
-          padding: EdgeInsets.fromLTRB(22, 0, 22, 28 + MediaQuery.paddingOf(sheetContext).bottom),
+          padding: EdgeInsets.fromLTRB(
+            22,
+            0,
+            22,
+            28 + MediaQuery.paddingOf(sheetContext).bottom,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -401,7 +445,11 @@ Future<void> showDeleteAccountSheet(BuildContext context) {
               const SizedBox(height: 8),
               Text(
                 'This removes your plants, pets, and care history.',
-                style: GoogleFonts.dmSans(fontSize: 14, height: 1.45, color: AppColors.onboardingBody),
+                style: GoogleFonts.dmSans(
+                  fontSize: 14,
+                  height: 1.45,
+                  color: AppColors.onboardingBody,
+                ),
               ),
               const SizedBox(height: 22),
               Row(
@@ -413,25 +461,23 @@ Future<void> showDeleteAccountSheet(BuildContext context) {
                         foregroundColor: AppColors.ink,
                         side: BorderSide(color: AppColors.dotIdle),
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
-                      child: Text('Cancel', style: GoogleFonts.dmSans(fontWeight: FontWeight.w600)),
+                      child: Text(
+                        'Cancel',
+                        style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: FilledButton(
-                      onPressed: () async {
-                        await sheetContext.read<AuthService>().deleteAccount();
-                        if (sheetContext.mounted) sheetContext.go(AppRoutes.signIn);
-                      },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: careRemove,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                      child: Text('Delete account', style: GoogleFonts.dmSans(fontWeight: FontWeight.w600)),
+                    child: _DangerAction(
+                      label: 'Delete account',
+                      busyLabel: 'Deleting',
+                      done: 'Your account and its care are deleted.',
+                      run: (auth) => auth.deleteAccount(),
                     ),
                   ),
                 ],
@@ -442,6 +488,75 @@ Future<void> showDeleteAccountSheet(BuildContext context) {
       );
     },
   );
+}
+
+/// A confirm button that shows its own progress and reports what happened.
+class _DangerAction extends StatefulWidget {
+  const _DangerAction({
+    required this.label,
+    required this.busyLabel,
+    required this.done,
+    required this.run,
+  });
+
+  final String label;
+  final String busyLabel;
+  final String done;
+  final Future<void> Function(AuthService auth) run;
+
+  @override
+  State<_DangerAction> createState() => _DangerActionState();
+}
+
+class _DangerActionState extends State<_DangerAction> {
+  var _busy = false;
+
+  Future<void> _press() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final auth = context.read<AuthService>();
+    final router = GoRouter.of(context);
+    final toast = sproutToaster(context);
+    final navigator = Navigator.of(context);
+    try {
+      await widget.run(auth);
+      navigator.pop();
+      toast.show(widget.done);
+      router.go(AppRoutes.signIn);
+    } on AppException catch (error) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      toast.show(error.message, error: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      onPressed: _busy ? null : _press,
+      style: FilledButton.styleFrom(
+        backgroundColor: careRemove,
+        foregroundColor: Colors.white,
+        disabledBackgroundColor: careRemove.withValues(alpha: 0.6),
+        disabledForegroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (_busy) ...[
+            const SproutSpinner(size: 14),
+            const SizedBox(width: 8),
+          ],
+          Text(
+            _busy ? widget.busyLabel : widget.label,
+            style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class AppearanceSheet extends StatelessWidget {
@@ -462,13 +577,22 @@ class AppearanceSheet extends StatelessWidget {
           const CareSheetHandle(),
           const _SheetTitle('Appearance'),
           Padding(
-            padding: EdgeInsets.fromLTRB(22, 20, 22, 32 + MediaQuery.paddingOf(context).bottom),
+            padding: EdgeInsets.fromLTRB(
+              22,
+              20,
+              22,
+              32 + MediaQuery.paddingOf(context).bottom,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Choose how Sprout looks on your device.',
-                  style: GoogleFonts.dmSans(fontSize: 13, height: 1.5, color: AppColors.onboardingBody),
+                  style: GoogleFonts.dmSans(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: AppColors.onboardingBody,
+                  ),
                 ),
                 const SizedBox(height: 22),
                 Text(
@@ -491,7 +615,9 @@ class AppearanceSheet extends StatelessWidget {
                           title: options[index].$2,
                           subtitle: options[index].$3,
                           selected: theme == options[index].$2,
-                          onTap: () => context.read<ThemeController>().select(options[index].$2),
+                          onTap: () => context.read<ThemeController>().select(
+                            options[index].$2,
+                          ),
                         ),
                       ),
                     ],
@@ -559,7 +685,9 @@ class _SheetTitle extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(22, 18, 22, 14),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.dotIdle, width: 0.8)),
+        border: Border(
+          bottom: BorderSide(color: AppColors.dotIdle, width: 0.8),
+        ),
       ),
       child: Row(
         children: [
@@ -634,7 +762,11 @@ class _ToggleRow extends StatelessWidget {
                 ),
                 Text(
                   subtitle,
-                  style: GoogleFonts.dmSans(fontSize: 12, height: 1.4, color: AppColors.onboardingBody),
+                  style: GoogleFonts.dmSans(
+                    fontSize: 12,
+                    height: 1.4,
+                    color: AppColors.onboardingBody,
+                  ),
                 ),
               ],
             ),
@@ -712,11 +844,18 @@ class _TimeCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               title,
-              style: GoogleFonts.dmSans(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink),
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.ink,
+              ),
             ),
             Text(
               clock,
-              style: GoogleFonts.dmSans(fontSize: 11, color: AppColors.onboardingBody),
+              style: GoogleFonts.dmSans(
+                fontSize: 11,
+                color: AppColors.onboardingBody,
+              ),
             ),
           ],
         ),
@@ -726,7 +865,11 @@ class _TimeCard extends StatelessWidget {
 }
 
 class _LeadChip extends StatelessWidget {
-  const _LeadChip({required this.label, required this.selected, required this.onTap});
+  const _LeadChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   final String label;
   final bool selected;
@@ -799,7 +942,12 @@ class _AccountGroup extends StatelessWidget {
               decoration: BoxDecoration(
                 border: index == rows.length - 1
                     ? null
-                    : Border(bottom: BorderSide(color: AppColors.dotIdle, width: 0.8)),
+                    : Border(
+                        bottom: BorderSide(
+                          color: AppColors.dotIdle,
+                          width: 0.8,
+                        ),
+                      ),
               ),
               child: rows[index],
             ),
@@ -837,10 +985,20 @@ class _AccountRow extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: GoogleFonts.dmSans(fontSize: 14, fontWeight: FontWeight.w500, color: color),
+                style: GoogleFonts.dmSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: color,
+                ),
               ),
             ),
-            Text('›', style: GoogleFonts.dmSans(fontSize: 18, color: AppColors.onboardingBody)),
+            Text(
+              '›',
+              style: GoogleFonts.dmSans(
+                fontSize: 18,
+                color: AppColors.onboardingBody,
+              ),
+            ),
           ],
         ),
       ),
@@ -909,12 +1067,19 @@ class _ThemeCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               title,
-              style: GoogleFonts.dmSans(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink),
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.ink,
+              ),
             ),
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: GoogleFonts.dmSans(fontSize: 10, color: AppColors.onboardingBody),
+              style: GoogleFonts.dmSans(
+                fontSize: 10,
+                color: AppColors.onboardingBody,
+              ),
             ),
           ],
         ),

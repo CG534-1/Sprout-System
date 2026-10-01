@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
+import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/auth_widgets.dart';
 
@@ -32,8 +33,9 @@ class _OtpPageState extends State<OtpPage> {
   String? _error;
   var _checking = false;
   var _resending = false;
-  static const _resendWait = 60;
-  var _secondsLeft = _resendWait;
+  static const _resendWait = Duration(seconds: 60);
+  late DateTime _sentAt;
+  late int _secondsLeft;
   Timer? _wait;
 
   bool get _recovery => widget.purpose == 'recovery';
@@ -44,21 +46,45 @@ class _OtpPageState extends State<OtpPage> {
   @override
   void initState() {
     super.initState();
+    // Anchored to when the code actually went out, so the countdown is right
+    // when this page is reopened rather than starting over at a full minute.
+    _sentAt = context.read<AuthService>().codeSentAt ?? DateTime.now();
+    _secondsLeft = _remaining;
     _startWait();
+  }
+
+  int get _remaining {
+    final left = _resendWait - DateTime.now().difference(_sentAt);
+    return left.isNegative ? 0 : left.inSeconds;
   }
 
   void _startWait() {
     _wait?.cancel();
-    _secondsLeft = _resendWait;
+    _secondsLeft = _remaining;
+    if (_secondsLeft == 0) return;
     _wait = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) return;
-      if (_secondsLeft <= 1) {
+      if (!mounted) {
         timer.cancel();
-        setState(() => _secondsLeft = 0);
         return;
       }
-      setState(() => _secondsLeft -= 1);
+      final route = ModalRoute.of(context);
+      if (route != null && !route.isCurrent) return;
+      final left = _remaining;
+      if (left == _secondsLeft) return;
+      setState(() => _secondsLeft = left);
+      if (left == 0) {
+        timer.cancel();
+        _wait = null;
+      }
     });
+  }
+
+  void _leave() {
+    if (context.canPop()) {
+      context.pop();
+      return;
+    }
+    context.go(_recovery ? AppRoutes.signIn : AppRoutes.signUp);
   }
 
   @override
@@ -74,15 +100,18 @@ class _OtpPageState extends State<OtpPage> {
       _resending = true;
       _error = null;
     });
+    final auth = context.read<AuthService>();
     try {
-      await context.read<AuthService>().resendEmailCode(
+      await auth.resendEmailCode(
         email: widget.email,
         recovery: _recovery,
         emailChange: _emailChange,
       );
       if (!mounted) return;
+      _sentAt = auth.codeSentAt ?? DateTime.now();
       setState(() => _resending = false);
       _startWait();
+      showSproutToast(context, 'New code sent to ${widget.email}.');
     } on AppException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -107,7 +136,11 @@ class _OtpPageState extends State<OtpPage> {
         final wanted = widget.email.trim().toLowerCase();
         final now = confirmed?.trim().toLowerCase();
         if (now == wanted) {
-          context.pop(true);
+          if (context.canPop()) {
+            context.pop(true);
+          } else {
+            context.go(AppRoutes.updateDetails);
+          }
           return;
         }
         if (!_askedCurrent && widget.currentEmail.isNotEmpty) {
@@ -129,7 +162,11 @@ class _OtpPageState extends State<OtpPage> {
       }
       await auth.confirmEmailCode(email: widget.email, code: _code.text);
       if (!mounted) return;
-      context.pop(true);
+      if (context.canPop()) {
+        context.pop(true);
+      } else {
+        context.go(AppRoutes.signUp);
+      }
     } on AppException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -155,7 +192,7 @@ class _OtpPageState extends State<OtpPage> {
               children: [
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: AuthBackButton(onPressed: () => context.pop()),
+                  child: AuthBackButton(onPressed: _leave),
                 ),
                 Expanded(
                   child: ListView(
@@ -249,6 +286,7 @@ class _OtpPageState extends State<OtpPage> {
                   child: SlabButton(
                     label: _checking ? 'Checking' : 'Confirm',
                     enabled: _code.text.trim().length == 6 && !_checking,
+                    busy: _checking,
                     onPressed: _confirm,
                   ),
                 ),

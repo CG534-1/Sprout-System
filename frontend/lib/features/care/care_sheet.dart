@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sprout/core/theme/app_colors.dart';
+import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/data/models/care_enums.dart';
 
 const careRemove = Color(0xFFC0392B);
@@ -62,6 +63,67 @@ class CareSheetHandle extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The title bar for a care flow that takes the whole screen.
+class CarePageHeader extends StatelessWidget {
+  const CarePageHeader({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.onBack,
+  });
+
+  final String title;
+  final String subtitle;
+  final VoidCallback? onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 10, 22, 14),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: AppColors.dotIdle, width: 0.8),
+        ),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: onBack,
+            icon: const Icon(
+              Icons.arrow_back,
+              color: AppColors.primary,
+              size: 22,
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.fraunces(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w600,
+                    color: careInk,
+                  ),
+                ),
+                if (subtitle.trim().isNotEmpty)
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 13,
+                      color: AppColors.onboardingBody,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -458,16 +520,20 @@ class CareActionButton extends StatelessWidget {
     required this.label,
     required this.enabled,
     required this.onPressed,
+    this.busy = false,
+    this.top = 26,
   });
 
   final String label;
   final bool enabled;
   final VoidCallback onPressed;
+  final bool busy;
+  final double top;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 26),
+      padding: EdgeInsets.only(top: top),
       child: Opacity(
         opacity: enabled ? 1 : 0.4,
         child: DecoratedBox(
@@ -489,13 +555,22 @@ class CareActionButton extends StatelessWidget {
                 height: 50,
                 width: double.infinity,
                 child: Center(
-                  child: Text(
-                    label,
-                    style: GoogleFonts.dmSans(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (busy) ...[
+                        const SproutSpinner(size: 15),
+                        const SizedBox(width: 10),
+                      ],
+                      Text(
+                        label,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

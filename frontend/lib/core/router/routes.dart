@@ -17,6 +17,8 @@ class AppRoutes {
   static const addPlant = '/add-plant';
   static const addPet = '/add-pet';
   static const history = '/history';
+  static const schedule = '/care-schedule';
+  static const careDetails = '/care-details';
 
   static String plant(String id) => '/plants/$id';
 

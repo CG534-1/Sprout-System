@@ -50,6 +50,13 @@ class _SplashPageState extends State<SplashPage>
     setState(() => _playing = true);
     Future<void>.delayed(SplashPage.hold, () {
       if (!mounted) return;
+      // The cup only flies into the onboarding header when onboarding is
+      // actually next. A returning account goes straight to its home.
+      final auth = context.read<AuthService>();
+      if (auth.pastOnboarding) {
+        auth.markSplashSeen();
+        return;
+      }
       final from = _rectOf(_potKey);
       setState(() {
         _from = from;

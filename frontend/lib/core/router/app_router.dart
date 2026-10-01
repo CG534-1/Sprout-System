@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/data/services/auth_service.dart';
@@ -6,6 +7,8 @@ import 'package:sprout/features/auth/otp_page.dart';
 import 'package:sprout/features/auth/reset_password_page.dart';
 import 'package:sprout/features/auth/sign_in_page.dart';
 import 'package:sprout/features/auth/sign_up_page.dart';
+import 'package:sprout/features/care/add_care_sheet.dart';
+import 'package:sprout/features/care/care_schedule_page.dart';
 import 'package:sprout/features/care/my_care_page.dart';
 import 'package:sprout/features/history/history_page.dart';
 import 'package:sprout/features/onboarding/onboarding_page.dart';
@@ -35,7 +38,15 @@ GoRouter createAppRouter(AuthService auth) {
       ),
       GoRoute(
         path: AppRoutes.signUp,
-        builder: (context, state) => const SignUpPage(),
+        // The step lives in the URL so browser back walks the stepper. A page
+        // key that ignores the query keeps one route, and one set of
+        // half-typed fields, across those steps.
+        pageBuilder: (context, state) => MaterialPage(
+          key: const ValueKey('sprout.sign-up'),
+          child: SignUpPage(
+            step: int.tryParse(state.uri.queryParameters['step'] ?? '') ?? 0,
+          ),
+        ),
       ),
       GoRoute(
         path: AppRoutes.forgotPassword,
@@ -52,6 +63,22 @@ GoRouter createAppRouter(AuthService auth) {
       GoRoute(
         path: AppRoutes.resetPassword,
         builder: (context, state) => const ResetPasswordPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.careDetails,
+        builder: (context, state) {
+          final args = state.extra;
+          if (args is! CareDetailsArgs) return const _CareDraftGone();
+          return CareDetailsPage(args: args);
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.schedule,
+        builder: (context, state) {
+          final args = state.extra;
+          if (args is! CareScheduleArgs) return const _CareDraftGone();
+          return CareSchedulePage(args: args);
+        },
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) => navigationShell,
@@ -100,6 +127,31 @@ GoRouter createAppRouter(AuthService auth) {
   );
 }
 
+/// A care form only holds its draft in memory, so a reload or a browser back
+/// onto one of those entries has nothing to show. This stands in for a frame
+/// and hands straight back to My care rather than leaving a blank screen.
+class _CareDraftGone extends StatefulWidget {
+  const _CareDraftGone();
+
+  @override
+  State<_CareDraftGone> createState() => _CareDraftGoneState();
+}
+
+class _CareDraftGoneState extends State<_CareDraftGone> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.go(AppRoutes.myCare);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(body: SizedBox.shrink());
+  }
+}
+
 String? _redirect(AuthService auth, String location) {
   final onboarding = location == AppRoutes.onboarding;
   final authenticating =
@@ -114,7 +166,7 @@ String? _redirect(AuthService auth, String location) {
     return AppRoutes.splash;
   }
 
-  if (!auth.onboardingComplete) {
+  if (!auth.pastOnboarding) {
     if (onboarding) return null;
     return AppRoutes.onboarding;
   }

@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/data/api/api_client.dart';
+import 'package:sprout/data/api/auth_errors.dart';
+import 'package:sprout/data/api/session_idle.dart';
 import 'package:sprout/data/api/web_tab.dart';
 import 'package:sprout/data/models/user_profile.dart';
 import 'package:sprout/data/services/auth_service.dart';
@@ -27,6 +29,10 @@ class ApiAuthService extends AuthService {
   StreamSubscription<AuthState>? _authSub;
   var _holdRouting = false;
   var _routingDirty = false;
+  DateTime? _codeSentAt;
+  var _sessionExpired = false;
+  SharedPreferences? _prefs;
+  Timer? _keepAlive;
 
   @override
   void holdRouting() => _holdRouting = true;
@@ -50,6 +56,7 @@ class ApiAuthService extends AuthService {
 
   static const _splashKey = 'sprout.splash_seen';
   static const _onboardingKey = 'sprout.onboarding_complete';
+  static const _activeKey = 'sprout.last_active';
 
   @override
   UserProfile? get currentUser => _user;
@@ -76,24 +83,68 @@ class ApiAuthService extends AuthService {
   bool get resettingPassword => _resettingPassword;
 
   @override
+  DateTime? get codeSentAt => _codeSentAt;
+
+  @override
+  bool get sessionExpired => _sessionExpired;
+
+  @override
+  void clearSessionExpired() {
+    if (!_sessionExpired) return;
+    _sessionExpired = false;
+  }
+
+  @override
   Future<void> restore() async {
     final prefs = await SharedPreferences.getInstance();
+    _prefs = prefs;
     _splashSeen = prefs.getBool(_splashKey) ?? false;
     _onboardingComplete = prefs.getBool(_onboardingKey) ?? false;
+    final lastActive = prefs.getInt(_activeKey);
     _authSub = _supabase.auth.onAuthStateChange.listen((event) async {
       await _adoptSession();
     });
     if (_supabase.auth.currentSession != null) {
       await _adoptSession();
     }
+    final idled = idledOut(
+      lastActive: lastActive,
+      signedIn: _user != null,
+      midSetup: _pendingSignup || _resettingPassword,
+    );
+    if (idled) await _endStaleSession();
     final closedPage = kIsWeb && !webTabStillOpen();
     if (kIsWeb) markWebTabOpen();
     _replaySplashOnLaunch = _user != null && (!kIsWeb || closedPage);
+    keepAlive();
+    _keepAlive = Timer.periodic(const Duration(seconds: 45), (_) => keepAlive());
     notifyListeners();
+  }
+
+  Future<void> _endStaleSession() async {
+    try {
+      await _supabase.auth.signOut();
+    } on AuthException {
+      // The session is already gone on the server; the local state still goes.
+    }
+    _user = null;
+    _pendingSignup = false;
+    _resettingPassword = false;
+    _pendingFirst = null;
+    _pendingLast = null;
+    _pendingEmail = null;
+    _sessionExpired = true;
+    _splashSeen = false;
+  }
+
+  @override
+  void keepAlive() {
+    _prefs?.setInt(_activeKey, DateTime.now().millisecondsSinceEpoch);
   }
 
   @override
   void dispose() {
+    _keepAlive?.cancel();
     _authSub?.cancel();
     super.dispose();
   }
@@ -136,10 +187,13 @@ class ApiAuthService extends AuthService {
         password: password,
       );
       if (response.session == null) {
-        throw const AppException('Check your email and password.');
+        throw const AppException(
+          'Those details do not match an account. Check your email and password.',
+        );
       }
+      keepAlive();
       await _loadProfile();
-    });
+    }, op: AuthOp.signIn);
   }
 
   @override
@@ -166,7 +220,8 @@ class ApiAuthService extends AuthService {
           'signup_pending': true,
         },
       );
-    });
+      _markCodeSent();
+    }, op: AuthOp.send);
   }
 
   @override
@@ -181,8 +236,9 @@ class ApiAuthService extends AuthService {
         token: token,
         type: OtpType.email,
       );
+      keepAlive();
       await _adoptSession();
-    });
+    }, op: AuthOp.code);
   }
 
   @override
@@ -197,9 +253,10 @@ class ApiAuthService extends AuthService {
         token: token,
         type: OtpType.recovery,
       );
+      keepAlive();
       _resettingPassword = true;
       notifyListeners();
-    });
+    }, op: AuthOp.code);
   }
 
   @override
@@ -210,7 +267,8 @@ class ApiAuthService extends AuthService {
         throw const AppException('Enter a valid email.');
       }
       await _supabase.auth.updateUser(UserAttributes(email: trimmed));
-    });
+      _markCodeSent();
+    }, op: AuthOp.send);
   }
 
   @override
@@ -225,7 +283,8 @@ class ApiAuthService extends AuthService {
         token: token,
         type: OtpType.emailChange,
       );
-    });
+      keepAlive();
+    }, op: AuthOp.code);
     return _supabase.auth.currentUser?.email;
   }
 
@@ -242,29 +301,51 @@ class ApiAuthService extends AuthService {
       }
       if (emailChange) {
         await _supabase.auth.resend(type: OtpType.emailChange, email: trimmed);
+        _markCodeSent();
         return;
       }
       if (recovery) {
         await _supabase.auth.resetPasswordForEmail(trimmed);
+        _markCodeSent();
         return;
       }
       await _supabase.auth.signInWithOtp(
         email: trimmed,
         shouldCreateUser: true,
       );
-    });
+      _markCodeSent();
+    }, op: AuthOp.send);
   }
 
   @override
   Future<void> setNewPassword({required String password}) async {
     await _guard(() async {
-      if (password.length < 8) {
-        throw const AppException('Use at least 8 characters.');
+      if (!_passwordStrong(password)) {
+        throw const AppException(
+          'Use 8+ characters with a number, a capital letter, and a symbol.',
+        );
       }
       await _supabase.auth.updateUser(UserAttributes(password: password));
+      // The recovery code signs the session in. Drop it so the new password
+      // has to be used on the sign in page.
+      await _supabase.auth.signOut();
       _resettingPassword = false;
-      await _adoptSession();
-    });
+      _user = null;
+      keepAlive();
+      notifyListeners();
+    }, op: AuthOp.password);
+  }
+
+  bool _passwordStrong(String value) {
+    return value.length >= 8 &&
+        RegExp(r'\d').hasMatch(value) &&
+        RegExp(r'[A-Z]').hasMatch(value) &&
+        RegExp(r'[^A-Za-z0-9]').hasMatch(value);
+  }
+
+  void _markCodeSent() {
+    _codeSentAt = DateTime.now();
+    keepAlive();
   }
 
   @override
@@ -300,7 +381,8 @@ class ApiAuthService extends AuthService {
         avatarUrl: avatarUrl,
         avatarBytes: avatarBytes,
       );
-    });
+      keepAlive();
+    }, op: AuthOp.password);
     return false;
   }
 
@@ -335,7 +417,8 @@ class ApiAuthService extends AuthService {
         throw const AppException('Enter a valid email.');
       }
       await _supabase.auth.resetPasswordForEmail(trimmed);
-    });
+      _markCodeSent();
+    }, op: AuthOp.send);
   }
 
   @override
@@ -343,6 +426,8 @@ class ApiAuthService extends AuthService {
     await _guard(() async {
       await _supabase.auth.signOut();
       _user = null;
+      _pendingSignup = false;
+      _resettingPassword = false;
       notifyListeners();
     });
   }
@@ -390,6 +475,7 @@ class ApiAuthService extends AuthService {
     final user = _supabase.auth.currentUser;
     if (user == null) {
       _pendingSignup = false;
+      _resettingPassword = false;
       _pendingFirst = null;
       _pendingLast = null;
       _pendingEmail = null;
@@ -432,19 +518,18 @@ class ApiAuthService extends AuthService {
     }
   }
 
-  Future<void> _guard(Future<void> Function() action) async {
+  Future<void> _guard(
+    Future<void> Function() action, {
+    AuthOp op = AuthOp.general,
+  }) async {
     try {
       await action();
     } on AppException {
       rethrow;
     } on AuthException catch (error) {
-      final message = error.message.toLowerCase();
-      if (message.contains('expired') || message.contains('invalid')) {
-        throw const AppException('That code has expired. Resend it and try again.');
-      }
-      throw AppException(error.message);
+      throw AppException(authErrorMessage(error, op));
     } on StorageException catch (error) {
-      throw AppException(error.message);
+      throw AppException('That photo could not be saved. ${error.message}');
     }
   }
 }

@@ -10,6 +10,11 @@ abstract class AuthService extends ChangeNotifier {
 
   bool get onboardingComplete;
 
+  /// True once the carousel is behind us. An account that exists, even a
+  /// half-finished one, has already been past it, so the carousel never
+  /// reappears mid sign up if the stored flag is missing.
+  bool get pastOnboarding => onboardingComplete || isSignedIn || pendingSignup;
+
   bool get splashSeen;
 
   /// Email is confirmed, and the account is still waiting for a password.
@@ -22,6 +27,18 @@ abstract class AuthService extends ChangeNotifier {
   String? get pendingEmail => null;
 
   bool get resettingPassword => false;
+
+  /// When the last email code was sent, so a resend countdown survives
+  /// leaving and returning to the code page.
+  DateTime? get codeSentAt => null;
+
+  /// True once a stale session has been dropped, so sign in can say why.
+  bool get sessionExpired => false;
+
+  void clearSessionExpired() {}
+
+  /// Records that the person is still here, for the idle timeout.
+  void keepAlive() {}
 
   /// Keeps the router from rebuilding the code page while a code is checked.
   void holdRouting() {}

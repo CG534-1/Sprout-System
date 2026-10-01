@@ -7,14 +7,9 @@ String? validateEmail(String? value) {
   return null;
 }
 
+/// Sign in only needs something typed. Length rules belong on the pages that
+/// create a password, so an existing account never sees a rule it cannot meet.
 String? validatePassword(String? value) {
-  final password = value ?? '';
-  if (password.isEmpty) return 'Enter a password';
-  if (password.length < 6) return 'Use at least 6 characters';
-  return null;
-}
-
-String? validateRequired(String? value, String message) {
-  if (value == null || value.trim().isEmpty) return message;
+  if ((value ?? '').isEmpty) return 'Enter your password';
   return null;
 }

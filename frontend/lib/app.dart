@@ -23,7 +23,7 @@ class SproutApp extends StatefulWidget {
   State<SproutApp> createState() => _SproutAppState();
 }
 
-class _SproutAppState extends State<SproutApp> {
+class _SproutAppState extends State<SproutApp> with WidgetsBindingObserver {
   late final GoRouter _router;
   late final ThemeController _theme;
   late final bool _ownsTheme;
@@ -34,10 +34,18 @@ class _SproutAppState extends State<SproutApp> {
     _router = createAppRouter(widget.services.auth);
     _ownsTheme = widget.theme == null;
     _theme = widget.theme ?? ThemeController();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Stamps the idle clock when the app is backgrounded or brought back.
+    widget.services.auth.keepAlive();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _router.dispose();
     widget.services.dispose();
     if (_ownsTheme) _theme.dispose();

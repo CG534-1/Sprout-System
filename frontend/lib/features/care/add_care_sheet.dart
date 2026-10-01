@@ -1,20 +1,17 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:provider/provider.dart';
 import 'package:sprout/core/app_exception.dart';
+import 'package:sprout/core/photo_picker.dart';
+import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
+import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/data/models/care_enums.dart';
 import 'package:sprout/data/models/care_schedule.dart';
-import 'package:sprout/data/models/pet.dart';
-import 'package:sprout/data/models/plant.dart';
-import 'package:sprout/data/services/care_service.dart';
-import 'package:sprout/data/services/pet_service.dart';
-import 'package:sprout/data/services/plant_service.dart';
-import 'package:sprout/data/services/profile_service.dart';
+import 'package:sprout/features/care/care_schedule_page.dart';
 import 'package:sprout/features/care/care_sheet.dart';
 
 class CareDraft {
@@ -45,118 +42,146 @@ class CareDraft {
   final List<CareSchedule> schedules;
 }
 
-Future<void> showAddCareSheet(BuildContext context, {CareDraft? existing}) {
+/// Who the details page is for: a new plant or pet, or someone already in
+/// your care.
+class CareDetailsArgs {
+  const CareDetailsArgs({required this.plant, this.existing});
+
+  final bool plant;
+  final CareDraft? existing;
+}
+
+/// Asks only whether this is a plant or a pet. The fields and the plan are
+/// long, so they each get a page of their own after this.
+Future<void> showAddCareSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (context) => _AddCareSheet(existing: existing),
+    builder: (context) => const _KindSheet(),
   );
 }
 
-enum _Kind { plant, pet }
-
-class _AddCareSheet extends StatefulWidget {
-  const _AddCareSheet({this.existing});
-
-  final CareDraft? existing;
+class _KindSheet extends StatefulWidget {
+  const _KindSheet();
 
   @override
-  State<_AddCareSheet> createState() => _AddCareSheetState();
+  State<_KindSheet> createState() => _KindSheetState();
 }
 
-class _AddCareSheetState extends State<_AddCareSheet> {
+class _KindSheetState extends State<_KindSheet> {
+  var _plant = true;
+
+  void _next() {
+    final router = GoRouter.of(context);
+    Navigator.of(context).pop();
+    router.push(AppRoutes.schedule, extra: CareScheduleArgs(plant: _plant));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CareSheet(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          const CareSheetHandle(),
+          const CareSheetHeader(title: 'Add to your care'),
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              22,
+              20,
+              22,
+              32 + MediaQuery.paddingOf(context).bottom,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      CareChoice(
+                        emoji: '🌿',
+                        title: 'Plant',
+                        subtitle: 'Watering reminders & schedule',
+                        selected: _plant,
+                        onTap: () => setState(() => _plant = true),
+                      ),
+                      const SizedBox(width: 10),
+                      CareChoice(
+                        emoji: '🐾',
+                        title: 'Pet',
+                        subtitle: 'Feeding, water bowl & walks',
+                        selected: !_plant,
+                        onTap: () => setState(() => _plant = false),
+                      ),
+                    ],
+                  ),
+                ),
+                CareActionButton(
+                  label: 'Next',
+                  enabled: true,
+                  onPressed: _next,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The name, photo and notes, for a new plant or pet or for one already in
+/// your care. A page rather than a sheet, because there is a lot to fill in
+/// and the plan still has to follow.
+class CareDetailsPage extends StatefulWidget {
+  const CareDetailsPage({super.key, required this.args});
+
+  final CareDetailsArgs args;
+
+  @override
+  State<CareDetailsPage> createState() => _CareDetailsPageState();
+}
+
+class _CareDetailsPageState extends State<CareDetailsPage> {
   late final TextEditingController _name;
   late final TextEditingController _species;
   late final TextEditingController _breed;
   late final TextEditingController _location;
   late final TextEditingController _notes;
-  late final TextEditingController _everyDays;
-  late final TextEditingController _bowlEveryDays;
-  late final TextEditingController _walkEveryDays;
-  late _Kind _kind;
-  var _plan = false;
-  var _saving = false;
+  var _picking = false;
   Uint8List? _photo;
-  CareFrequency? _frequency;
-  final _waterTimes = <CareSlot>{};
-  final _weekdays = <int>{};
-  int? _feeds;
-  final _feedTimes = <CareSlot>{};
-  var _bowl = false;
-  CareFrequency? _bowlFrequency;
-  final _bowlTimes = <CareSlot>{};
-  final _bowlWeekdays = <int>{};
-  var _walks = false;
-  CareFrequency? _walkFrequency;
-  int? _walksPerDay;
-  final _walkTimes = <CareSlot>{};
-  final _walkWeekdays = <int>{};
   DateTime? _lastWatered;
   DateTime? _lastFed;
   DateTime? _lastBowl;
   DateTime? _lastWalk;
-  String? _waterLead;
-  String? _feedLead;
-  String? _bowlLead;
-  String? _walkLead;
-  var _accountLead = '30 min before';
 
-  static const _leadChoices = ['15 min before', '30 min before', '1 hour before'];
+  CareDraft? get _existing => widget.args.existing;
+
+  bool get _plant => widget.args.plant;
 
   @override
   void initState() {
     super.initState();
-    final existing = widget.existing;
+    final existing = _existing;
     _name = TextEditingController(text: existing?.name ?? '');
     _species = TextEditingController(text: existing?.species ?? '');
     _breed = TextEditingController(text: existing?.breed ?? '');
     _location = TextEditingController(text: existing?.location ?? '');
     _notes = TextEditingController(text: existing?.notes ?? '');
-    _everyDays = TextEditingController();
-    _bowlEveryDays = TextEditingController();
-    _walkEveryDays = TextEditingController();
     _photo = existing?.photoBytes;
-    _kind = existing?.type == CareSubjectType.pet ? _Kind.pet : _Kind.plant;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadAccountLead());
     if (existing == null) return;
     for (final schedule in existing.schedules) {
       switch (schedule.action) {
         case CareAction.water:
-          _frequency = schedule.frequency;
-          _waterTimes.addAll(schedule.reminders);
-          _weekdays.addAll(schedule.weekdays);
-          if (schedule.everyDays != null) {
-            _everyDays.text = '${schedule.everyDays}';
-          }
           _lastWatered = schedule.lastDone;
-          _waterLead = schedule.lead;
         case CareAction.feed:
-          _feeds = schedule.timesPerDay;
-          _feedTimes.addAll(schedule.reminders);
           _lastFed = schedule.lastDone;
-          _feedLead = schedule.lead;
         case CareAction.waterBowl:
-          _bowl = true;
-          _bowlFrequency = schedule.frequency;
-          _bowlTimes.addAll(schedule.reminders);
-          _bowlWeekdays.addAll(schedule.weekdays);
-          if (schedule.everyDays != null) {
-            _bowlEveryDays.text = '${schedule.everyDays}';
-          }
           _lastBowl = schedule.lastDone;
-          _bowlLead = schedule.lead;
         case CareAction.walk:
-          _walks = true;
-          _walkFrequency = schedule.frequency;
-          _walksPerDay = schedule.timesPerDay;
-          _walkTimes.addAll(schedule.reminders);
-          _walkWeekdays.addAll(schedule.weekdays);
-          if (schedule.everyDays != null) {
-            _walkEveryDays.text = '${schedule.everyDays}';
-          }
           _lastWalk = schedule.lastDone;
-          _walkLead = schedule.lead;
         case CareAction.mist:
         case CareAction.fertilize:
         case CareAction.groom:
@@ -172,225 +197,52 @@ class _AddCareSheetState extends State<_AddCareSheet> {
     _breed.dispose();
     _location.dispose();
     _notes.dispose();
-    _everyDays.dispose();
-    _bowlEveryDays.dispose();
-    _walkEveryDays.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadAccountLead() async {
-    final settings = await context.read<ProfileService>().settings();
-    if (!mounted) return;
-    setState(() => _accountLead = settings.lead);
-  }
-
-  List<Widget> _leadChips(String? selected, ValueChanged<String> onPick) {
-    final current = selected ?? _accountLead;
-    return [
-      const SizedBox(height: 10),
-      Text(
-        'How far in advance?',
-        style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF4C7259)),
-      ),
-      const SizedBox(height: 8),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          for (final lead in _leadChoices)
-            CareChip(
-              label: lead,
-              selected: current == lead,
-              onTap: () => setState(() => onPick(lead)),
-            ),
-        ],
-      ),
-    ];
   }
 
   bool get _named => _name.text.trim().isNotEmpty;
 
-  int? get _customDays => int.tryParse(_everyDays.text.trim());
-
-  bool get _plantReady {
-    if (_frequency == null || _waterTimes.isEmpty) return false;
-    if (_frequency == CareFrequency.custom) {
-      final days = _customDays;
-      if (days == null || days < 1) return false;
+  void _leave() {
+    if (context.canPop()) {
+      context.pop();
+      return;
     }
-    if (_frequency == CareFrequency.setDays && _weekdays.isEmpty) return false;
-    return true;
+    context.go(AppRoutes.myCare);
   }
 
-  bool get _petReady {
-    final feeding = _feeds != null && _feedTimes.isNotEmpty;
-    final bowl = !_bowl || _cadenceReady(_bowlFrequency, _bowlEveryDays, _bowlWeekdays, _bowlTimes, false);
-    final walking = !_walks || _cadenceReady(_walkFrequency, _walkEveryDays, _walkWeekdays, _walkTimes, true);
-    return feeding && bowl && walking;
+  /// Hands over to the plan, which is a page of its own because pet plans are
+  /// long. This step is left behind, so a back from the plan lands on My care
+  /// rather than halfway through the form.
+  void _openSchedule() {
+    if (!_named) return;
+    final args = CareScheduleArgs(
+      plant: _plant,
+      name: _name.text.trim(),
+      species: _species.text.trim(),
+      breed: _breed.text.trim(),
+      location: _location.text.trim(),
+      notes: _notes.text.trim(),
+      photo: _photo,
+      lastWatered: _lastWatered,
+      lastFed: _lastFed,
+      lastBowl: _lastBowl,
+      lastWalk: _lastWalk,
+      existing: _existing,
+    );
+    final router = GoRouter.of(context);
+    if (router.canPop()) router.pop();
+    router.push(AppRoutes.schedule, extra: args);
   }
 
-  bool _cadenceReady(
-    CareFrequency? frequency,
-    TextEditingController days,
-    Set<int> weekdays,
-    Set<CareSlot> times,
-    bool needsCount,
-  ) {
-    if (frequency == null || times.isEmpty) return false;
-    if (needsCount && _walksPerDay == null) return false;
-    if (frequency == CareFrequency.custom) {
-      final count = int.tryParse(days.text.trim());
-      if (count == null || count < 1) return false;
-    }
-    if (frequency == CareFrequency.setDays && weekdays.isEmpty) return false;
-    return true;
-  }
-
-  Future<void> _save() async {
-    if (_saving) return;
-    final ready = _kind == _Kind.plant ? _plantReady : _petReady;
-    if (!ready) return;
-    setState(() => _saving = true);
-    final name = _name.text.trim();
-    final species = _species.text.trim();
-    final breed = _breed.text.trim();
-    final location = _location.text.trim();
-    final notes = _notes.text.trim();
-    final existing = widget.existing;
-    final kind = _kind;
-    final photo = _photo;
-    final entries = _entries();
-    final plants = context.read<PlantService>();
-    final pets = context.read<PetService>();
-    final care = context.read<CareService>();
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    if (mounted) Navigator.of(context).pop();
-    try {
-      final String id;
-      if (existing != null && kind == _Kind.plant) {
-        id = existing.id;
-        await plants.updatePlant(
-          Plant(
-            id: id,
-            name: name,
-            species: species,
-            photoUrl: photo == null ? existing.photoUrl : null,
-            photoBytes: photo ?? existing.photoBytes,
-            location: location.isEmpty ? null : location,
-            notes: notes.isEmpty ? null : notes,
-            createdAt: existing.createdAt,
-          ),
-        );
-      } else if (existing != null) {
-        id = existing.id;
-        await pets.updatePet(
-          Pet(
-            id: id,
-            name: name,
-            species: species,
-            breed: breed,
-            photoUrl: photo == null ? existing.photoUrl : null,
-            photoBytes: photo ?? existing.photoBytes,
-            notes: notes.isEmpty ? null : notes,
-            createdAt: existing.createdAt,
-          ),
-        );
-      } else if (kind == _Kind.plant) {
-        final plant = await plants.createPlant(
-          name: name,
-          species: species,
-          location: location,
-          notes: notes,
-          photoBytes: photo,
-        );
-        id = plant.id;
-      } else {
-        final pet = await pets.createPet(
-          name: name,
-          species: species,
-          breed: breed,
-          notes: notes,
-          photoBytes: photo,
-        );
-        id = pet.id;
-      }
-      await care.savePlan(
-        subjectId: id,
-        subjectName: name,
-        subjectType: kind == _Kind.plant ? CareSubjectType.plant : CareSubjectType.pet,
-        entries: entries,
-      );
-    } on AppException catch (error) {
-      messenger?.showSnackBar(SnackBar(content: Text(error.message)));
-    }
-  }
-
-  List<CarePlanEntry> _entries() {
-    if (_kind == _Kind.plant) {
-      return [
-        CarePlanEntry(
-          action: CareAction.water,
-          frequency: _frequency!,
-          reminders: _waterTimes.toList(),
-          everyDays: _frequency == CareFrequency.custom ? _customDays : null,
-          weekdays: _frequency == CareFrequency.setDays ? (_weekdays.toList()..sort()) : const [],
-          lastDone: _lastWatered,
-          lead: _waterLead ?? _accountLead,
-        ),
-      ];
-    }
-    final entries = <CarePlanEntry>[
-      CarePlanEntry(
-        action: CareAction.feed,
-        frequency: CareFrequency.daily,
-        timesPerDay: _feeds,
-        reminders: _feedTimes.toList(),
-        lastDone: _lastFed,
-        lead: _feedLead ?? _accountLead,
-      ),
-    ];
-    if (_bowl && _bowlFrequency != null && _bowlTimes.isNotEmpty) {
-      entries.add(
-        CarePlanEntry(
-          action: CareAction.waterBowl,
-          frequency: _bowlFrequency!,
-          reminders: _bowlTimes.toList(),
-          everyDays: _bowlFrequency == CareFrequency.custom
-              ? int.tryParse(_bowlEveryDays.text.trim())
-              : null,
-          weekdays: _bowlFrequency == CareFrequency.setDays
-              ? (_bowlWeekdays.toList()..sort())
-              : const [],
-          lastDone: _lastBowl,
-          lead: _bowlLead ?? _accountLead,
-        ),
-      );
-    }
-    if (_walks && _walkFrequency != null && _walksPerDay != null) {
-      entries.add(
-        CarePlanEntry(
-          action: CareAction.walk,
-          frequency: _walkFrequency!,
-          timesPerDay: _walksPerDay,
-          reminders: _walkTimes.toList(),
-          everyDays: _walkFrequency == CareFrequency.custom
-              ? int.tryParse(_walkEveryDays.text.trim())
-              : null,
-          weekdays: _walkFrequency == CareFrequency.setDays
-              ? (_walkWeekdays.toList()..sort())
-              : const [],
-          lastDone: _lastWalk,
-          lead: _walkLead ?? _accountLead,
-        ),
-      );
-    }
-    return entries;
-  }
-
-  Future<void> _pickDate(DateTime? current, void Function(DateTime date) assign) async {
+  Future<void> _pickDate(
+    DateTime? current,
+    void Function(DateTime date) assign,
+  ) async {
     final today = DateTime.now();
     final day = DateTime(today.year, today.month, today.day);
-    final initial = current == null ? day : DateTime(current.year, current.month, current.day);
+    final initial = current == null
+        ? day
+        : DateTime(current.year, current.month, current.day);
     final picked = await showDatePicker(
       context: context,
       initialDate: initial.isAfter(day) ? day : initial,
@@ -401,79 +253,75 @@ class _AddCareSheetState extends State<_AddCareSheet> {
     setState(() => assign(DateTime(picked.year, picked.month, picked.day)));
   }
 
+  Future<void> _pickPhoto() async {
+    if (_picking) return;
+    setState(() => _picking = true);
+    try {
+      final bytes = await pickCarePhoto();
+      if (!mounted) return;
+      setState(() {
+        _picking = false;
+        if (bytes != null) _photo = bytes;
+      });
+    } on AppException catch (error) {
+      if (!mounted) return;
+      setState(() => _picking = false);
+      showSproutToast(context, error.message, error: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final name = _name.text.trim();
-    final title = !_plan
-        ? 'Add to your care'
-        : _kind == _Kind.plant
-        ? 'Water schedule for $name'
-        : 'Care plan for $name';
-    return CareSheet(
-      child: ListView(
-        shrinkWrap: true,
-        children: [
-          const CareSheetHandle(),
-          CareSheetHeader(
-            title: title,
-            onBack: _plan ? () => setState(() => _plan = false) : null,
-          ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              22,
-              20,
-              22,
-              32 + MediaQuery.paddingOf(context).bottom,
+    final existing = _existing;
+    return Scaffold(
+      backgroundColor: AppColors.onboardingPaper,
+      resizeToAvoidBottomInset: false,
+      body: SafeArea(
+        child: Column(
+          children: [
+            CarePageHeader(
+              title: existing != null
+                  ? 'Edit details'
+                  : _plant
+                  ? 'Add a plant'
+                  : 'Add a pet',
+              subtitle: existing?.name ?? '',
+              onBack: _leave,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: _plan ? _planFields(name) : _nameFields(),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(
+                  22,
+                  6,
+                  22,
+                  24 + MediaQuery.viewInsetsOf(context).bottom,
+                ),
+                children: _nameFields(),
+              ),
             ),
-          ),
-        ],
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                22,
+                0,
+                22,
+                12 + MediaQuery.paddingOf(context).bottom,
+              ),
+              child: CareActionButton(
+                label: 'Set up care schedule →',
+                enabled: _named,
+                top: 10,
+                onPressed: _openSchedule,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Future<void> _pickPhoto() async {
-    final file = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1024,
-      imageQuality: 85,
-    );
-    if (file == null || !mounted) return;
-    final bytes = await file.readAsBytes();
-    if (!mounted) return;
-    setState(() => _photo = bytes);
-  }
-
   List<Widget> _nameFields() {
-    final plant = _kind == _Kind.plant;
-    final editing = widget.existing != null;
+    final plant = _plant;
     return [
-      if (!editing)
-        IntrinsicHeight(
-          child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            CareChoice(
-              emoji: '🌿',
-              title: 'Plant',
-              subtitle: 'Watering reminders & schedule',
-              selected: plant,
-              onTap: () => setState(() => _kind = _Kind.plant),
-            ),
-            const SizedBox(width: 10),
-            CareChoice(
-              emoji: '🐾',
-              title: 'Pet',
-              subtitle: 'Feeding, water bowl & walks',
-              selected: !plant,
-              onTap: () => setState(() => _kind = _Kind.pet),
-            ),
-          ],
-        ),
-        ),
       const CareLabel('PHOTO', top: 18),
       GestureDetector(
         onTap: _pickPhoto,
@@ -483,9 +331,16 @@ class _AddCareSheetState extends State<_AddCareSheet> {
               child: SizedBox(
                 width: 64,
                 height: 64,
-                child: _photo != null || widget.existing?.photoUrl != null
+                child: _picking
+                    ? ColoredBox(
+                        color: careField,
+                        child: const Center(
+                          child: SproutSpinner(color: AppColors.sproutGreen),
+                        ),
+                      )
+                    : _photo != null || _existing?.photoUrl != null
                     ? CarePhoto(
-                        url: _photo == null ? widget.existing?.photoUrl : null,
+                        url: _photo == null ? _existing?.photoUrl : null,
                         bytes: _photo,
                       )
                     : ColoredBox(
@@ -501,7 +356,9 @@ class _AddCareSheetState extends State<_AddCareSheet> {
             ),
             const SizedBox(width: 12),
             Text(
-              _photo == null && widget.existing?.photoUrl == null
+              _picking
+                  ? 'Opening your photos'
+                  : _photo == null && _existing?.photoUrl == null
                   ? 'Add a photo'
                   : 'Change photo',
               style: GoogleFonts.dmSans(
@@ -541,23 +398,23 @@ class _AddCareSheetState extends State<_AddCareSheet> {
           onChanged: (_) => setState(() {}),
         ),
         const CareLabel('WHEN LAST WATERED (OPTIONAL)'),
-        _WhenField(
+        CareWhenField(
           value: _lastWatered,
           onTap: () => _pickDate(_lastWatered, (date) => _lastWatered = date),
         ),
       ] else ...[
         const CareLabel('WHEN LAST FED (OPTIONAL)'),
-        _WhenField(
+        CareWhenField(
           value: _lastFed,
           onTap: () => _pickDate(_lastFed, (date) => _lastFed = date),
         ),
         const CareLabel('WHEN WAS THE WATER BOWL LAST REFILLED (OPTIONAL)'),
-        _WhenField(
+        CareWhenField(
           value: _lastBowl,
           onTap: () => _pickDate(_lastBowl, (date) => _lastBowl = date),
         ),
         const CareLabel('WHEN LAST WALKED (OPTIONAL)'),
-        _WhenField(
+        CareWhenField(
           value: _lastWalk,
           onTap: () => _pickDate(_lastWalk, (date) => _lastWalk = date),
         ),
@@ -569,359 +426,12 @@ class _AddCareSheetState extends State<_AddCareSheet> {
         maxLines: 3,
         onChanged: (_) => setState(() {}),
       ),
-      CareActionButton(
-        label: 'Set up care schedule →',
-        enabled: _named,
-        onPressed: () => setState(() => _plan = true),
-      ),
-    ];
-  }
-
-  List<Widget> _planFields(String name) {
-    if (_kind == _Kind.plant) return _plantPlan(name);
-    return _petPlan(name);
-  }
-
-  List<Widget> _plantPlan(String name) {
-    final who = name.isEmpty ? 'them' : name;
-    return [
-      CareLabel('HOW OFTEN DOES ${who.toUpperCase()} NEED WATER?', top: 0),
-      Wrap(
-        spacing: 7,
-        runSpacing: 8,
-        children: [
-          for (final frequency in CareFrequency.values)
-            CareChip(
-              label: frequency.chip,
-              selected: _frequency == frequency,
-              onTap: () => setState(() => _frequency = frequency),
-            ),
-        ],
-      ),
-      if (_frequency == CareFrequency.custom) ...[
-        const CareLabel('EVERY HOW MANY DAYS?'),
-        CareNameField(
-          controller: _everyDays,
-          hint: 'e.g. 4',
-          keyboardType: TextInputType.number,
-          onChanged: (_) => setState(() {}),
-        ),
-      ],
-      if (_frequency == CareFrequency.setDays) ...[
-        const CareLabel('WHICH DAYS?'),
-        Wrap(
-          spacing: 7,
-          runSpacing: 8,
-          children: [
-            for (final day in [1, 2, 3, 4, 5, 6, 7])
-              CareChip(
-                label: const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][day - 1],
-                selected: _weekdays.contains(day),
-                onTap: () => setState(() {
-                  if (!_weekdays.add(day)) _weekdays.remove(day);
-                }),
-              ),
-          ],
-        ),
-      ],
-      const CareLabel('REMIND ME AT (select all that apply)'),
-      CareSlots(
-        selected: _waterTimes,
-        onToggle: (slot) => setState(() {
-          if (!_waterTimes.add(slot)) _waterTimes.remove(slot);
-        }),
-      ),
-      ..._leadChips(_waterLead, (lead) => _waterLead = lead),
-      CareActionButton(
-        label: widget.existing == null ? 'Add $name 🌿' : 'Save $name 🌿',
-        enabled: _plantReady && !_saving,
-        onPressed: _save,
-      ),
-    ];
-  }
-
-  List<Widget> _petPlan(String name) {
-    return [
-      _PlanCard(
-        title: 'Feeding',
-        children: [
-          Text(
-            'How many times a day?',
-            style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF4C7259)),
-          ),
-          const SizedBox(height: 8),
-          _CountRow(
-            selected: _feeds,
-            onSelected: (value) => setState(() => _feeds = value),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Remind me at (multi-select)',
-            style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF4C7259)),
-          ),
-          const SizedBox(height: 8),
-          CareSlots(
-            selected: _feedTimes,
-            onToggle: (slot) => setState(() {
-              if (!_feedTimes.add(slot)) _feedTimes.remove(slot);
-            }),
-          ),
-          ..._leadChips(_feedLead, (lead) => _feedLead = lead),
-        ],
-      ),
-      const SizedBox(height: 12),
-      _PlanCard(
-        title: 'Water bowl',
-        trailing: _WalkSwitch(
-          on: _bowl,
-          onChanged: (value) => setState(() {
-            _bowl = value;
-            _bowlFrequency ??= CareFrequency.daily;
-          }),
-        ),
-        children: [
-          if (_bowl) ...[
-            ..._cadence(
-              frequency: _bowlFrequency,
-              onPick: (value) => _bowlFrequency = value,
-              days: _bowlEveryDays,
-              weekdays: _bowlWeekdays,
-            ),
-            Text(
-              'When should I remind you to refill it?',
-              style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF4C7259)),
-            ),
-            const SizedBox(height: 8),
-            CareSlots(
-              selected: _bowlTimes,
-              onToggle: (slot) => setState(() {
-                if (!_bowlTimes.add(slot)) _bowlTimes.remove(slot);
-              }),
-            ),
-            ..._leadChips(_bowlLead, (lead) => _bowlLead = lead),
-          ],
-        ],
-      ),
-      const SizedBox(height: 12),
-      _PlanCard(
-        title: 'Walks',
-        trailing: _WalkSwitch(
-          on: _walks,
-          onChanged: (value) => setState(() {
-            _walks = value;
-            _walkFrequency ??= CareFrequency.daily;
-          }),
-        ),
-        children: [
-          if (_walks) ...[
-            ..._cadence(
-              frequency: _walkFrequency,
-              onPick: (value) => _walkFrequency = value,
-              days: _walkEveryDays,
-              weekdays: _walkWeekdays,
-            ),
-            Text(
-              'How many walks on those days?',
-              style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF4C7259)),
-            ),
-            const SizedBox(height: 8),
-            _CountRow(
-              selected: _walksPerDay,
-              onSelected: (value) => setState(() => _walksPerDay = value),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Remind me at (multi-select)',
-              style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF4C7259)),
-            ),
-            const SizedBox(height: 8),
-            CareSlots(
-              selected: _walkTimes,
-              onToggle: (slot) => setState(() {
-                if (!_walkTimes.add(slot)) _walkTimes.remove(slot);
-              }),
-            ),
-            ..._leadChips(_walkLead, (lead) => _walkLead = lead),
-          ],
-        ],
-      ),
-      CareActionButton(
-        label: widget.existing == null ? 'Add $name 🐾' : 'Save $name 🐾',
-        enabled: _petReady && !_saving,
-        onPressed: _save,
-      ),
-    ];
-  }
-
-  List<Widget> _cadence({
-    required CareFrequency? frequency,
-    required ValueChanged<CareFrequency> onPick,
-    required TextEditingController days,
-    required Set<int> weekdays,
-  }) {
-    return [
-      Text(
-        'How often?',
-        style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF4C7259)),
-      ),
-      const SizedBox(height: 8),
-      Wrap(
-        spacing: 7,
-        runSpacing: 8,
-        children: [
-          for (final item in CareFrequency.values)
-            CareChip(
-              label: item.chip,
-              selected: frequency == item,
-              onTap: () => setState(() => onPick(item)),
-            ),
-        ],
-      ),
-      if (frequency == CareFrequency.custom) ...[
-        const SizedBox(height: 10),
-        CareNameField(
-          controller: days,
-          hint: 'e.g. 4',
-          keyboardType: TextInputType.number,
-          onChanged: (_) => setState(() {}),
-        ),
-      ],
-      if (frequency == CareFrequency.setDays) ...[
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 7,
-          runSpacing: 8,
-          children: [
-            for (final day in [1, 2, 3, 4, 5, 6, 7])
-              CareChip(
-                label: const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][day - 1],
-                selected: weekdays.contains(day),
-                onTap: () => setState(() {
-                  if (!weekdays.add(day)) weekdays.remove(day);
-                }),
-              ),
-          ],
-        ),
-      ],
-      const SizedBox(height: 10),
     ];
   }
 }
 
-class _CountRow extends StatelessWidget {
-  const _CountRow({required this.selected, required this.onSelected});
-
-  final int? selected;
-  final ValueChanged<int> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      children: [
-        for (final count in [1, 2, 3])
-          CareChip(
-            label: '${count}x / day',
-            selected: selected == count,
-            onTap: () => onSelected(count),
-          ),
-      ],
-    );
-  }
-}
-
-class _PlanCard extends StatelessWidget {
-  const _PlanCard({
-    required this.title,
-    required this.children,
-    this.trailing,
-  });
-
-  final String title;
-  final List<Widget> children;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFC6E5CC), width: 0.8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                title,
-                style: GoogleFonts.dmSans(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: careInk,
-                ),
-              ),
-              const Spacer(),
-              ?trailing,
-            ],
-          ),
-          if (children.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            ...children,
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _WalkSwitch extends StatelessWidget {
-  const _WalkSwitch({required this.on, required this.onChanged});
-
-  final bool on;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => onChanged(!on),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        width: 44,
-        height: 26,
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          color: on ? const Color(0xFF179C46) : const Color(0xFFC6E5CC),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: AnimatedAlign(
-          duration: const Duration(milliseconds: 160),
-          alignment: on ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            width: 20,
-            height: 20,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.2),
-                  blurRadius: 3,
-                  offset: const Offset(0, 1),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _WhenField extends StatelessWidget {
-  const _WhenField({required this.value, required this.onTap});
+class CareWhenField extends StatelessWidget {
+  const CareWhenField({super.key, required this.value, required this.onTap});
 
   final DateTime? value;
   final VoidCallback onTap;

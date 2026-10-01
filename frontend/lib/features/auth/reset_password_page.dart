@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
+import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/auth_widgets.dart';
 
@@ -21,13 +22,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   var _saving = false;
   var _obscure = true;
 
-  bool get _ready {
-    final value = _password.text;
-    return value.length >= 8 &&
-        RegExp(r'\d').hasMatch(value) &&
-        RegExp(r'[A-Z]').hasMatch(value) &&
-        RegExp(r'[^A-Za-z0-9]').hasMatch(value);
-  }
+  bool get _ready => PasswordRules.satisfied(_password.text);
 
   @override
   void initState() {
@@ -47,10 +42,14 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
       _saving = true;
       _error = null;
     });
+    final toast = sproutToaster(context);
     try {
-      await context.read<AuthService>().setNewPassword(password: _password.text);
+      await context.read<AuthService>().setNewPassword(
+        password: _password.text,
+      );
       if (!mounted) return;
-      context.go(AppRoutes.today);
+      toast.show('Password updated. Sign in with your new password.');
+      context.go(AppRoutes.signIn);
     } on AppException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -58,6 +57,13 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
         _error = error.message;
       });
     }
+  }
+
+  Future<void> _cancel() async {
+    if (_saving) return;
+    await context.read<AuthService>().signOut();
+    if (!mounted) return;
+    context.go(AppRoutes.signIn);
   }
 
   @override
@@ -70,7 +76,10 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
           padding: const EdgeInsets.fromLTRB(20, 8, 26, 16),
           child: Column(
             children: [
-              const SizedBox(height: 48),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: AuthBackButton(onPressed: _cancel),
+              ),
               Expanded(
                 child: ListView(
                   padding: EdgeInsets.only(
@@ -79,7 +88,10 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                     bottom: MediaQuery.viewInsetsOf(context).bottom,
                   ),
                   children: [
-                    const AuthHeadline(lead: 'Choose a new', accent: 'password.'),
+                    const AuthHeadline(
+                      lead: 'Choose a new',
+                      accent: 'password.',
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       'At least 8 characters, with a number, a capital letter, and a symbol.',
@@ -99,11 +111,15 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                       suffix: IconButton(
                         onPressed: () => setState(() => _obscure = !_obscure),
                         icon: Icon(
-                          _obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                          _obscure
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
                           color: AppColors.ink,
                         ),
                       ),
                     ),
+                    const SizedBox(height: 14),
+                    PasswordRules(value: _password.text),
                   ],
                 ),
               ),
@@ -112,6 +128,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                 child: SlabButton(
                   label: _saving ? 'Saving' : 'Save password',
                   enabled: _ready && !_saving,
+                  busy: _saving,
                   onPressed: _save,
                 ),
               ),

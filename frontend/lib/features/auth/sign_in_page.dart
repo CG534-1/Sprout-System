@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
+import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/auth_validators.dart';
 import 'package:sprout/features/auth/auth_widgets.dart';
@@ -31,6 +32,18 @@ class _SignInPageState extends State<SignInPage> {
     _email.addListener(_refresh);
     _password.addListener(_refresh);
     _leaveFieldsAlone();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _tellIfTimedOut());
+  }
+
+  void _tellIfTimedOut() {
+    if (!mounted) return;
+    final auth = context.read<AuthService>();
+    if (!auth.sessionExpired) return;
+    auth.clearSessionExpired();
+    showSproutToast(
+      context,
+      'You were away a while, so we signed you out. Sign in to pick up again.',
+    );
   }
 
   void _leaveFieldsAlone() {
@@ -73,18 +86,22 @@ class _SignInPageState extends State<SignInPage> {
       _emailError = null;
       _passwordError = null;
     });
+    final toast = sproutToaster(context);
+    final router = GoRouter.of(context);
     try {
       await context.read<AuthService>().signIn(
         email: _email.text,
         password: _password.text,
       );
-      if (context.mounted) context.go(AppRoutes.today);
+      if (!mounted) return;
+      router.go(AppRoutes.today);
     } on AppException catch (error) {
       if (!mounted) return;
       setState(() {
         _passwordError = error.message;
         _submitting = false;
       });
+      toast.show(error.message, error: true);
     }
   }
 
@@ -93,130 +110,133 @@ class _SignInPageState extends State<SignInPage> {
     return Focus(
       autofocus: true,
       child: Scaffold(
-      backgroundColor: AppColors.onboardingPaper,
-      resizeToAvoidBottomInset: false,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(26, 12, 26, 16),
-          child: Column(
-            children: [
-              Expanded(
-                child: ListView(
-                  padding: EdgeInsets.only(
-                    bottom: MediaQuery.viewInsetsOf(context).bottom,
-                  ),
-                  children: [
-                    const SizedBox(height: 36),
-                    const Center(
-                      child: SplashCup(filled: true, diameter: 72),
+        backgroundColor: AppColors.onboardingPaper,
+        resizeToAvoidBottomInset: false,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(26, 12, 26, 16),
+            child: Column(
+              children: [
+                Expanded(
+                  child: ListView(
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.viewInsetsOf(context).bottom,
                     ),
-                    const SizedBox(height: 18),
-                    Text(
-                      'Welcome back',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.dmSans(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        height: 34.5 / 24,
-                        color: authInk,
+                    children: [
+                      const SizedBox(height: 36),
+                      const Center(
+                        child: SplashCup(filled: true, diameter: 72),
                       ),
-                    ),
-                    Text(
-                      'Sign in to see what needs your care today.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.dmSans(
-                        fontSize: 15,
-                        height: 22 / 15,
-                        color: AppColors.onboardingBody,
-                      ),
-                    ),
-                    const SizedBox(height: 36),
-                    AuthField(
-                      label: 'EMAIL',
-                      controller: _email,
-                      hint: 'you@example.com',
-                      error: _emailError,
-                      fieldKey: const Key('sign-in-email'),
-                      keyboardType: TextInputType.emailAddress,
-                    ),
-                    const SizedBox(height: 14),
-                    AuthField(
-                      label: 'PASSWORD',
-                      controller: _password,
-                      hint: 'Your password',
-                      error: _passwordError,
-                      fieldKey: const Key('sign-in-password'),
-                      obscure: _obscure,
-                      suffix: IconButton(
-                        onPressed: () => setState(() => _obscure = !_obscure),
-                        icon: Icon(
-                          _obscure
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          color: AppColors.sproutGreen,
-                          size: 20,
+                      const SizedBox(height: 18),
+                      Text(
+                        'Welcome back',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          height: 34.5 / 24,
+                          color: authInk,
                         ),
                       ),
-                    ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () => context.push(AppRoutes.forgotPassword),
-                        child: Text(
-                          'Forgot password?',
-                          style: GoogleFonts.dmSans(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                      Text(
+                        'Sign in to see what needs your care today.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 15,
+                          height: 22 / 15,
+                          color: AppColors.onboardingBody,
+                        ),
+                      ),
+                      const SizedBox(height: 36),
+                      AuthField(
+                        label: 'EMAIL',
+                        controller: _email,
+                        hint: 'you@example.com',
+                        error: _emailError,
+                        fieldKey: const Key('sign-in-email'),
+                        keyboardType: TextInputType.emailAddress,
+                      ),
+                      const SizedBox(height: 14),
+                      AuthField(
+                        label: 'PASSWORD',
+                        controller: _password,
+                        hint: 'Your password',
+                        error: _passwordError,
+                        fieldKey: const Key('sign-in-password'),
+                        obscure: _obscure,
+                        suffix: IconButton(
+                          onPressed: () => setState(() => _obscure = !_obscure),
+                          icon: Icon(
+                            _obscure
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
                             color: AppColors.sproutGreen,
+                            size: 20,
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              SlabButton(
-                key: const Key('sign-in-submit'),
-                label: _submitting ? 'Signing in' : 'Sign in',
-                onPressed: _submitting ? null : _submit,
-                enabled: _email.text.trim().isNotEmpty &&
-                    _password.text.isNotEmpty &&
-                    !_submitting,
-              ),
-              const SizedBox(height: 14),
-              Text.rich(
-                TextSpan(
-                  style: GoogleFonts.dmSans(
-                    fontSize: 12,
-                    color: AppColors.onboardingBody,
-                  ),
-                  children: [
-                    const TextSpan(text: 'New to Sprout? '),
-                    WidgetSpan(
-                      alignment: PlaceholderAlignment.baseline,
-                      baseline: TextBaseline.alphabetic,
-                      child: GestureDetector(
-                        onTap: () => context.push(AppRoutes.signUp),
-                        child: Text(
-                          'Create an account',
-                          style: GoogleFonts.dmSans(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.sproutGreen,
-                            decoration: TextDecoration.underline,
-                            decorationColor: AppColors.sproutGreen,
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () =>
+                              context.push(AppRoutes.forgotPassword),
+                          child: Text(
+                            'Forgot password?',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.sproutGreen,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+                SlabButton(
+                  key: const Key('sign-in-submit'),
+                  label: _submitting ? 'Signing in' : 'Sign in',
+                  onPressed: _submitting ? null : _submit,
+                  busy: _submitting,
+                  enabled:
+                      _email.text.trim().isNotEmpty &&
+                      _password.text.isNotEmpty &&
+                      !_submitting,
+                ),
+                const SizedBox(height: 14),
+                Text.rich(
+                  TextSpan(
+                    style: GoogleFonts.dmSans(
+                      fontSize: 12,
+                      color: AppColors.onboardingBody,
+                    ),
+                    children: [
+                      const TextSpan(text: 'New to Sprout? '),
+                      WidgetSpan(
+                        alignment: PlaceholderAlignment.baseline,
+                        baseline: TextBaseline.alphabetic,
+                        child: GestureDetector(
+                          onTap: () => context.push(AppRoutes.signUp),
+                          child: Text(
+                            'Create an account',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.sproutGreen,
+                              decoration: TextDecoration.underline,
+                              decorationColor: AppColors.sproutGreen,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }

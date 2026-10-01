@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
+import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/auth_validators.dart';
 import 'package:sprout/features/auth/auth_widgets.dart';
@@ -59,6 +60,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     try {
       await context.read<AuthService>().sendPasswordReset(email: _email.text);
       if (!mounted) return;
+      showSproutToast(context, 'Code sent to ${_email.text.trim()}.');
       final email = Uri.encodeQueryComponent(_email.text.trim());
       context.push('${AppRoutes.verifyEmail}?email=$email&purpose=recovery');
       setState(() => _submitting = false);
@@ -121,6 +123,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                 child: SlabButton(
                   label: _submitting ? 'Sending' : 'Send code',
                   enabled: _email.text.trim().isNotEmpty && !_submitting,
+                  busy: _submitting,
                   onPressed: _submit,
                 ),
               ),

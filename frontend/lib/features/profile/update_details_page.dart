@@ -3,10 +3,11 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:sprout/core/app_exception.dart';
+import 'package:sprout/core/photo_picker.dart';
 import 'package:sprout/core/widgets/person_avatar.dart';
+import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/data/services/auth_service.dart';
@@ -53,7 +54,10 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
     final index = _avatars.indexOf(url ?? '');
     if (_photo == null && index >= 0) {
       _avatar = index;
-    } else if (_photo == null && url != null && url.isNotEmpty && !url.startsWith('assets/')) {
+    } else if (_photo == null &&
+        url != null &&
+        url.isNotEmpty &&
+        !url.startsWith('assets/')) {
       _keepRemoteAvatar = true;
     }
   }
@@ -70,10 +74,8 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _AvatarSheet(
-        selected: _photo == null ? _avatar : -1,
-        photo: _photo,
-      ),
+      builder: (context) =>
+          _AvatarSheet(selected: _photo == null ? _avatar : -1, photo: _photo),
     );
     if (picked == null || !mounted) return;
     setState(() {
@@ -104,6 +106,7 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
     final avatarUrl = _photo == null && !_keepRemoteAvatar
         ? (_avatar >= 0 ? _avatars[_avatar] : '')
         : null;
+    final toast = sproutToaster(context);
     try {
       await auth.updateDetails(
         name: _name.text,
@@ -113,12 +116,14 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
       );
       if (!mounted) return;
       if (!changing) {
+        toast.show('Your details are saved.');
         context.pop();
         return;
       }
       await auth.requestEmailChange(email: next);
       if (!mounted) return;
       setState(() => _saving = false);
+      toast.show('We sent a code to $next.');
       final ok = await context.push<bool>(
         '${AppRoutes.verifyEmail}?email=${Uri.encodeQueryComponent(next)}&current=${Uri.encodeQueryComponent(previous)}&purpose=email_change',
       );
@@ -130,13 +135,16 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
         avatarUrl: avatarUrl,
         avatarBytes: _photo,
       );
-      if (mounted) context.pop();
+      if (!mounted) return;
+      toast.show('Your email is now $next.');
+      context.pop();
     } on AppException catch (error) {
       if (!mounted) return;
       setState(() {
         _emailError = error.message;
         _saving = false;
       });
+      toast.show(error.message, error: true);
     }
   }
 
@@ -156,7 +164,9 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
               ),
               Expanded(
                 child: ListView(
-                  padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.viewInsetsOf(context).bottom,
+                  ),
                   children: [
                     Text(
                       'Update details',
@@ -170,7 +180,11 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
                     const SizedBox(height: 8),
                     Text(
                       'Change your name, email, or avatar.',
-                      style: GoogleFonts.dmSans(fontSize: 14, height: 1.4, color: AppColors.onboardingBody),
+                      style: GoogleFonts.dmSans(
+                        fontSize: 14,
+                        height: 1.4,
+                        color: AppColors.onboardingBody,
+                      ),
                     ),
                     const SizedBox(height: 22),
                     GestureDetector(
@@ -189,7 +203,10 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
                                   avatarUrl: _photo != null
                                       ? null
                                       : _keepRemoteAvatar
-                                      ? context.read<AuthService>().currentUser?.avatarUrl
+                                      ? context
+                                            .read<AuthService>()
+                                            .currentUser
+                                            ?.avatarUrl
                                       : _avatar >= 0
                                       ? _avatars[_avatar]
                                       : null,
@@ -230,6 +247,7 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
               SlabButton(
                 label: _saving ? 'Saving' : 'Save details',
                 enabled: !_saving,
+                busy: _saving,
                 onPressed: _save,
               ),
             ],
@@ -249,22 +267,40 @@ class _AvatarChoice {
   final Uint8List? bytes;
 }
 
-class _AvatarSheet extends StatelessWidget {
+class _AvatarSheet extends StatefulWidget {
   const _AvatarSheet({required this.selected, this.photo});
 
   final int selected;
   final Uint8List? photo;
 
+  @override
+  State<_AvatarSheet> createState() => _AvatarSheetState();
+}
+
+class _AvatarSheetState extends State<_AvatarSheet> {
+  var _busy = false;
+
+  int get selected => widget.selected;
+
+  Uint8List? get photo => widget.photo;
+
   Future<void> _upload(BuildContext context) async {
-    final file = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1024,
-      imageQuality: 85,
-    );
-    if (file == null || !context.mounted) return;
-    final bytes = await file.readAsBytes();
-    if (!context.mounted) return;
-    Navigator.pop(context, _AvatarChoice.photo(bytes));
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final bytes = await pickCarePhoto();
+      if (!mounted) return;
+      if (bytes == null) {
+        setState(() => _busy = false);
+        return;
+      }
+      if (!context.mounted) return;
+      Navigator.pop(context, _AvatarChoice.photo(bytes));
+    } on AppException catch (error) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      showSproutToast(context, error.message, error: true);
+    }
   }
 
   @override
@@ -287,7 +323,10 @@ class _AvatarSheet extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             'You can always change this later.',
-            style: GoogleFonts.dmSans(fontSize: 14, color: AppColors.onboardingBody),
+            style: GoogleFonts.dmSans(
+              fontSize: 14,
+              color: AppColors.onboardingBody,
+            ),
           ),
           const SizedBox(height: 16),
           GridView.builder(
@@ -305,11 +344,18 @@ class _AvatarSheet extends StatelessWidget {
                   onTap: () => _upload(context),
                   child: _Face(
                     selected: selected < 0 && photo != null,
-                    child: photo == null
+                    child: _busy
+                        ? const Center(
+                            child: SproutSpinner(color: AppColors.sproutGreen),
+                          )
+                        : photo == null
                         ? Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(Icons.file_upload_outlined, color: AppColors.sproutGreen),
+                              const Icon(
+                                Icons.file_upload_outlined,
+                                color: AppColors.sproutGreen,
+                              ),
                               Text(
                                 'Upload image',
                                 textAlign: TextAlign.center,
@@ -326,7 +372,8 @@ class _AvatarSheet extends StatelessWidget {
                 );
               }
               return GestureDetector(
-                onTap: () => Navigator.pop(context, _AvatarChoice.memoji(index)),
+                onTap: () =>
+                    Navigator.pop(context, _AvatarChoice.memoji(index)),
                 child: _Face(
                   selected: index == selected,
                   child: Image.asset(_avatars[index], fit: BoxFit.contain),
