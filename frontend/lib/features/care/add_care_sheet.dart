@@ -269,18 +269,16 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
 
   Future<void> _pickPhoto(BuildContext from) async {
     if (_picking) return;
-    setState(() => _picking = true);
+    _picking = true;
     try {
       final bytes = await pickCarePhoto(from: from);
       if (!mounted) return;
-      setState(() {
-        _picking = false;
-        if (bytes != null) _photo = bytes;
-      });
+      if (bytes != null) setState(() => _photo = bytes);
     } on AppException catch (error) {
       if (!mounted) return;
-      setState(() => _picking = false);
       showSproutToast(context, error.message, error: true);
+    } finally {
+      _picking = false;
     }
   }
 

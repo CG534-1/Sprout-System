@@ -56,49 +56,73 @@ class SproutCirclePhoto extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ImageProvider? image;
-    var fit = BoxFit.cover;
     final rawBytes = bytes;
     final rawAsset = asset;
     final rawUrl = url?.trim() ?? '';
+    final assetPath = rawAsset != null && rawAsset.isNotEmpty
+        ? rawAsset
+        : rawUrl.startsWith('assets/')
+        ? rawUrl
+        : null;
+
+    final Widget face;
     if (rawBytes != null) {
-      image = MemoryImage(rawBytes);
-    } else if (rawAsset != null && rawAsset.isNotEmpty) {
-      image = AssetImage(rawAsset);
-      fit = BoxFit.contain;
-    } else if (rawUrl.startsWith('assets/')) {
-      image = AssetImage(rawUrl);
-      fit = BoxFit.contain;
+      face = DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppColors.field,
+          image: DecorationImage(
+            image: MemoryImage(rawBytes),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: const SizedBox.expand(),
+      );
+    } else if (assetPath != null) {
+      face = ClipOval(
+        clipBehavior: Clip.hardEdge,
+        child: ColoredBox(
+          color: AppColors.field,
+          child: Image.asset(assetPath, fit: BoxFit.contain),
+        ),
+      );
     } else if (rawUrl.isNotEmpty) {
-      image = NetworkImage(rawUrl);
+      face = DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppColors.field,
+          image: DecorationImage(
+            image: NetworkImage(rawUrl),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: const SizedBox.expand(),
+      );
     } else {
-      image = null;
+      face = DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppColors.field,
+        ),
+        child: Center(
+          child: fallback.isEmpty
+              ? Icon(
+                  Icons.person_outline,
+                  color: AppColors.sproutGreen,
+                  size: iconSize,
+                )
+              : Text(
+                  fallback,
+                  style: GoogleFonts.fraunces(
+                    fontSize: fallbackSize,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.sproutGreen,
+                  ),
+                ),
+        ),
+      );
     }
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: AppColors.field,
-        image: image == null ? null : DecorationImage(image: image, fit: fit),
-      ),
-      child: image != null
-          ? null
-          : Center(
-              child: fallback.isEmpty
-                  ? Icon(
-                      Icons.person_outline,
-                      color: AppColors.sproutGreen,
-                      size: iconSize,
-                    )
-                  : Text(
-                      fallback,
-                      style: GoogleFonts.fraunces(
-                        fontSize: fallbackSize,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.sproutGreen,
-                      ),
-                    ),
-            ),
-    );
+    return SizedBox.expand(child: face);
   }
 }

@@ -286,20 +286,18 @@ class _AvatarSheetState extends State<_AvatarSheet> {
 
   Future<void> _upload(BuildContext context) async {
     if (_busy) return;
-    setState(() => _busy = true);
+    _busy = true;
     try {
       final bytes = await pickCarePhoto(from: context);
       if (!mounted) return;
-      if (bytes == null) {
-        setState(() => _busy = false);
-        return;
-      }
+      if (bytes == null) return;
       if (!context.mounted) return;
       Navigator.pop(context, _AvatarChoice.photo(bytes));
     } on AppException catch (error) {
       if (!mounted) return;
-      setState(() => _busy = false);
       showSproutToast(context, error.message, error: true);
+    } finally {
+      _busy = false;
     }
   }
 

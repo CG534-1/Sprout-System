@@ -60,9 +60,12 @@ void main() {
     expect(find.text('CONTINUE'), findsNothing);
     expect(find.text('SKIP, DO THIS LATER'), findsNothing);
 
-    await tester.tap(
-      find.image(const AssetImage('assets/images/memoji_hijab.png')).last,
-    );
+    final hijab = find.image(
+      const AssetImage('assets/images/memoji_hijab.png'),
+    ).last;
+    expect(tester.getSize(hijab).shortestSide, greaterThan(40));
+
+    await tester.tap(hijab);
     await tester.pumpAndSettle();
 
     expect(find.text('You can always change this later.'), findsNothing);

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:image_picker/image_picker.dart';
@@ -15,13 +16,10 @@ import 'package:sprout/core/picker_anchor.dart';
 Future<Uint8List?> pickCarePhoto({BuildContext? from}) async {
   parkWebPicker(from);
   try {
-    final file = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1024,
-      imageQuality: 85,
-    );
-    if (file == null) return null;
-    final bytes = await file.readAsBytes();
+    final bytes = kIsWeb
+        ? await pickWebFile(from)
+        : await _pickNative();
+    if (bytes == null) return null;
     if (from == null || !from.mounted) return bytes;
     return await showPhotoCrop(from, bytes);
   } on AppException {
@@ -41,4 +39,14 @@ Future<Uint8List?> pickCarePhoto({BuildContext? from}) async {
   } finally {
     resetWebPicker();
   }
+}
+
+Future<Uint8List?> _pickNative() async {
+  final file = await ImagePicker().pickImage(
+    source: ImageSource.gallery,
+    maxWidth: 1024,
+    imageQuality: 85,
+  );
+  if (file == null) return null;
+  return file.readAsBytes();
 }

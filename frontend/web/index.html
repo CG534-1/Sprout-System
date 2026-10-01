@@ -29,11 +29,13 @@
       overflow: hidden;
       background: #F8FEF9;
     }
-    /* HOST stays 0×0. The input is parked over the tapped control via
-       --sprout-picker-* so iOS anchors the photo menu there. */
+    /* HOST stays 0×0 and pinned to the viewport origin so a leftover
+       plugin input is not a containing block at the bottom of the page. */
     #__image_picker_web-file-input {
       display: block;
       position: fixed;
+      left: 0;
+      top: 0;
       width: 0;
       height: 0;
       margin: 0;

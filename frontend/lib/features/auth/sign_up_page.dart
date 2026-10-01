@@ -881,20 +881,18 @@ class _AvatarSheetState extends State<_AvatarSheet> {
 
   Future<void> _upload(BuildContext context) async {
     if (_busy) return;
-    setState(() => _busy = true);
+    _busy = true;
     try {
       final file = await pickCarePhoto(from: context);
       if (!mounted) return;
-      if (file == null) {
-        setState(() => _busy = false);
-        return;
-      }
+      if (file == null) return;
       if (!context.mounted) return;
       Navigator.pop(context, _AvatarPick.photo(file));
     } on AppException catch (error) {
       if (!mounted) return;
-      setState(() => _busy = false);
       showSproutToast(context, error.message, error: true);
+    } finally {
+      _busy = false;
     }
   }
 
@@ -991,6 +989,7 @@ class _AvatarChoice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Stack(
+      fit: StackFit.expand,
       clipBehavior: Clip.none,
       children: [
         CustomPaint(
@@ -999,7 +998,7 @@ class _AvatarChoice extends StatelessWidget {
           ),
           child: Padding(
             padding: const EdgeInsets.all(6),
-            child: _MemojiFace(asset: asset),
+            child: SizedBox.expand(child: _MemojiFace(asset: asset)),
           ),
         ),
         if (selected)
@@ -1027,13 +1026,15 @@ class _UploadChoice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Stack(
+      fit: StackFit.expand,
       clipBehavior: Clip.none,
       children: [
         CustomPaint(
           painter: _DashedRingPainter(AppColors.sproutGreen),
           child: Padding(
             padding: const EdgeInsets.all(6),
-            child: photo == null
+            child: SizedBox.expand(
+              child: photo == null
                 ? DecoratedBox(
                     decoration: BoxDecoration(
                       color: AppColors.field,
@@ -1069,6 +1070,7 @@ class _UploadChoice extends StatelessWidget {
                     ),
                   )
                 : _MemojiFace(bytes: photo),
+            ),
           ),
         ),
         if (selected)
