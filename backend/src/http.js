@@ -93,13 +93,7 @@ export function createApp() {
 
   app.delete('/api/me', async (req, res, next) => {
     try {
-      const folder = req.user.id;
-      const { data: files } = await req.admin.storage.from(bucket).list(folder);
-      if (files?.length) {
-        await req.admin.storage.from(bucket).remove(files.map((file) => `${folder}/${file.name}`));
-      }
-      const { error } = await req.admin.auth.admin.deleteUser(req.user.id);
-      if (error) throw error;
+      await wipeAccount(req.admin, req.user.id);
       res.status(204).end();
     } catch (error) {
       next(error);
@@ -544,6 +538,32 @@ async function removeSubject(req, table, id) {
   await req.db.from('care_tasks').delete().eq('subject_id', id);
   await req.db.from('care_history').delete().eq('subject_id', id);
   const { error } = await req.db.from(table).delete().eq('id', id);
+  if (error) throw error;
+}
+
+async function wipeAccount(admin, userId) {
+  const { data: files } = await admin.storage.from(bucket).list(userId);
+  if (files?.length) {
+    await admin.storage.from(bucket).remove(files.map((file) => `${userId}/${file.name}`));
+  }
+  const tables = [
+    'care_history',
+    'care_tasks',
+    'care_schedules',
+    'plants',
+    'pets',
+    'device_tokens',
+    'push_notifications',
+    'user_settings',
+    'pending_profiles',
+    'profiles',
+  ];
+  for (const table of tables) {
+    const column = table === 'profiles' || table === 'pending_profiles' ? 'id' : 'user_id';
+    const { error } = await admin.from(table).delete().eq(column, userId);
+    if (error) throw error;
+  }
+  const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) throw error;
 }
 

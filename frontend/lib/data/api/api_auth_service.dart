@@ -275,34 +275,16 @@ class ApiAuthService extends AuthService {
     String? avatarUrl,
     Uint8List? avatarBytes,
   }) async {
-    var needsConfirmation = false;
     await _guard(() async {
       final trimmedName = name.trim();
       if (trimmedName.isEmpty) throw const AppException('Enter your name.');
-      if (_supabase.auth.currentSession != null) {
-        await _supabase.auth.updateUser(
-          UserAttributes(
-            password: password,
-            data: {
-              'name': trimmedName,
-              'signup_pending': false,
-              'password_set': true,
-              if (avatarUrl != null) 'avatar': avatarUrl,
-            },
-          ),
+      if (_supabase.auth.currentSession == null) {
+        throw const AppException(
+          'Enter the code from your email, then create your password.',
         );
-        await _saveDetails(
-          name: trimmedName,
-          email: email.trim(),
-          avatarUrl: avatarUrl,
-          avatarBytes: avatarBytes,
-        );
-        return;
       }
-      AuthResponse response;
-      try {
-        response = await _supabase.auth.signUp(
-          email: email.trim(),
+      await _supabase.auth.updateUser(
+        UserAttributes(
           password: password,
           data: {
             'name': trimmedName,
@@ -310,21 +292,8 @@ class ApiAuthService extends AuthService {
             'password_set': true,
             if (avatarUrl != null) 'avatar': avatarUrl,
           },
-          emailRedirectTo: kIsWeb ? Uri.base.origin : null,
-        );
-      } on AuthException catch (error) {
-        final message = error.message.toLowerCase();
-        if (message.contains('already') || message.contains('registered')) {
-          throw const AppException(
-            'Enter the code from your email, then create your password.',
-          );
-        }
-        rethrow;
-      }
-      if (response.session == null) {
-        needsConfirmation = true;
-        return;
-      }
+        ),
+      );
       await _saveDetails(
         name: trimmedName,
         email: email.trim(),
@@ -332,7 +301,7 @@ class ApiAuthService extends AuthService {
         avatarBytes: avatarBytes,
       );
     });
-    return needsConfirmation;
+    return false;
   }
 
   @override
