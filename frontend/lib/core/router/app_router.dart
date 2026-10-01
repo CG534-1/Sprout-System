@@ -101,7 +101,11 @@ String? _redirect(AuthService auth, String location) {
   }
 
   if (auth.pendingSignup) {
-    if (location == AppRoutes.signUp || location == AppRoutes.signIn) return null;
+    if (location == AppRoutes.signUp ||
+        location == AppRoutes.signIn ||
+        location == AppRoutes.verifyEmail) {
+      return null;
+    }
     return AppRoutes.signUp;
   }
 

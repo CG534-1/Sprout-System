@@ -149,7 +149,12 @@ class _SignUpPageState extends State<SignUpPage> {
         );
         if (!mounted) return;
         final email = Uri.encodeQueryComponent(_email.text.trim());
-        context.push('${AppRoutes.verifyEmail}?email=$email&purpose=signup');
+        final verified = await context.push<bool>(
+          '${AppRoutes.verifyEmail}?email=$email&purpose=signup',
+        );
+        if (!mounted || verified != true) return;
+        setState(() => _step = 1);
+        _leaveFieldsAlone();
       } on AppException catch (error) {
         if (!mounted) return;
         setState(() => _emailError = error.message);

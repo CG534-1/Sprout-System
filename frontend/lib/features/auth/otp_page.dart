@@ -98,8 +98,7 @@ class _OtpPageState extends State<OtpPage> {
       }
       await auth.confirmEmailCode(email: widget.email, code: _code.text);
       if (!mounted) return;
-      auth.reopenOnboarding();
-      context.go(AppRoutes.onboarding);
+      context.pop(true);
     } on AppException catch (error) {
       if (!mounted) return;
       setState(() {

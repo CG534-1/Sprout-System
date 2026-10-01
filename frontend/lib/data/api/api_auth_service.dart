@@ -28,7 +28,6 @@ class ApiAuthService extends AuthService {
 
   static const _splashKey = 'sprout.splash_seen';
   static const _onboardingKey = 'sprout.onboarding_complete';
-  static const _pendingOnboardingUserKey = 'sprout.pending_onboarding_user';
 
   @override
   UserProfile? get currentUser => _user;
@@ -96,13 +95,7 @@ class ApiAuthService extends AuthService {
     if (_onboardingComplete) return;
     _onboardingComplete = true;
     notifyListeners();
-    final userId = _supabase.auth.currentUser?.id;
-    SharedPreferences.getInstance().then((prefs) async {
-      await prefs.setBool(_onboardingKey, true);
-      if (_pendingSignup && userId != null) {
-        await prefs.setString(_pendingOnboardingUserKey, userId);
-      }
-    });
+    SharedPreferences.getInstance().then((prefs) => prefs.setBool(_onboardingKey, true));
   }
 
   @override
@@ -396,12 +389,6 @@ class ApiAuthService extends AuthService {
         _pendingLast = parts.length > 1 ? parts.sublist(1).join(' ') : '';
       }
       _pendingEmail = user.email;
-      final prefs = await SharedPreferences.getInstance();
-      final seenFor = prefs.getString(_pendingOnboardingUserKey);
-      if (seenFor != user.id && _onboardingComplete) {
-        _onboardingComplete = false;
-        await prefs.setBool(_onboardingKey, false);
-      }
       notifyListeners();
       return;
     }
