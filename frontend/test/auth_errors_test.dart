@@ -56,7 +56,7 @@ void main() {
     );
     expect(
       authErrorMessage(error, AuthOp.send),
-      'That email already has an account. Sign in instead.',
+      takenEmailMessage,
     );
   });
 

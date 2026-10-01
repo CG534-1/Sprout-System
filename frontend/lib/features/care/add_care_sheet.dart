@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/photo_picker.dart';
+import 'package:sprout/core/widgets/person_avatar.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/widgets/sprout_toast.dart';
@@ -75,7 +76,7 @@ class _KindSheetState extends State<_KindSheet> {
   void _next() {
     final router = GoRouter.of(context);
     Navigator.of(context).pop();
-    router.push(AppRoutes.schedule, extra: CareScheduleArgs(plant: _plant));
+    router.push(AppRoutes.careDetails, extra: CareDetailsArgs(plant: _plant));
   }
 
   @override
@@ -150,6 +151,11 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
   late final TextEditingController _breed;
   late final TextEditingController _location;
   late final TextEditingController _notes;
+  final _nameFocus = FocusNode();
+  final _speciesFocus = FocusNode();
+  final _breedFocus = FocusNode();
+  final _locationFocus = FocusNode();
+  final _notesFocus = FocusNode();
   var _picking = false;
   Uint8List? _photo;
   DateTime? _lastWatered;
@@ -171,6 +177,9 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
     _location = TextEditingController(text: existing?.location ?? '');
     _notes = TextEditingController(text: existing?.notes ?? '');
     _photo = existing?.photoBytes;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    });
     if (existing == null) return;
     for (final schedule in existing.schedules) {
       switch (schedule.action) {
@@ -197,6 +206,11 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
     _breed.dispose();
     _location.dispose();
     _notes.dispose();
+    _nameFocus.dispose();
+    _speciesFocus.dispose();
+    _breedFocus.dispose();
+    _locationFocus.dispose();
+    _notesFocus.dispose();
     super.dispose();
   }
 
@@ -253,11 +267,11 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
     setState(() => assign(DateTime(picked.year, picked.month, picked.day)));
   }
 
-  Future<void> _pickPhoto() async {
+  Future<void> _pickPhoto(BuildContext from) async {
     if (_picking) return;
     setState(() => _picking = true);
     try {
-      final bytes = await pickCarePhoto();
+      final bytes = await pickCarePhoto(from: from);
       if (!mounted) return;
       setState(() {
         _picking = false;
@@ -273,47 +287,50 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
   @override
   Widget build(BuildContext context) {
     final existing = _existing;
-    return Scaffold(
-      backgroundColor: AppColors.onboardingPaper,
-      resizeToAvoidBottomInset: false,
-      body: SafeArea(
-        child: Column(
-          children: [
-            CarePageHeader(
-              title: existing != null
-                  ? 'Edit details'
-                  : _plant
-                  ? 'Add a plant'
-                  : 'Add a pet',
-              subtitle: existing?.name ?? '',
-              onBack: _leave,
-            ),
-            Expanded(
-              child: ListView(
+    return Focus(
+      autofocus: true,
+      child: Scaffold(
+        backgroundColor: AppColors.onboardingPaper,
+        resizeToAvoidBottomInset: false,
+        body: SafeArea(
+          child: Column(
+            children: [
+              CarePageHeader(
+                title: existing != null
+                    ? 'Edit details'
+                    : _plant
+                    ? 'Add a plant'
+                    : 'Add a pet',
+                subtitle: existing?.name ?? '',
+                onBack: _leave,
+              ),
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    22,
+                    6,
+                    22,
+                    24 + MediaQuery.viewInsetsOf(context).bottom,
+                  ),
+                  children: _nameFields(),
+                ),
+              ),
+              Padding(
                 padding: EdgeInsets.fromLTRB(
                   22,
-                  6,
+                  0,
                   22,
-                  24 + MediaQuery.viewInsetsOf(context).bottom,
+                  12 + MediaQuery.paddingOf(context).bottom,
                 ),
-                children: _nameFields(),
+                child: CareActionButton(
+                  label: 'Set up care schedule →',
+                  enabled: _named,
+                  top: 10,
+                  onPressed: _openSchedule,
+                ),
               ),
-            ),
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                22,
-                0,
-                22,
-                12 + MediaQuery.paddingOf(context).bottom,
-              ),
-              child: CareActionButton(
-                label: 'Set up care schedule →',
-                enabled: _named,
-                top: 10,
-                onPressed: _openSchedule,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -323,36 +340,41 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
     final plant = _plant;
     return [
       const CareLabel('PHOTO', top: 18),
-      GestureDetector(
-        onTap: _pickPhoto,
-        child: Row(
+      Builder(
+        builder: (context) => GestureDetector(
+          onTap: () => _pickPhoto(context),
+          child: Row(
           children: [
-            ClipOval(
-              child: SizedBox(
-                width: 64,
-                height: 64,
-                child: _picking
-                    ? ColoredBox(
+            SizedBox(
+              width: 64,
+              height: 64,
+              child: _picking
+                  ? DecoratedBox(
+                      decoration: BoxDecoration(
                         color: careField,
-                        child: const Center(
-                          child: SproutSpinner(color: AppColors.sproutGreen),
-                        ),
-                      )
-                    : _photo != null || _existing?.photoUrl != null
-                    ? CarePhoto(
-                        url: _photo == null ? _existing?.photoUrl : null,
-                        bytes: _photo,
-                      )
-                    : ColoredBox(
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Center(
+                        child: SproutSpinner(color: AppColors.sproutGreen),
+                      ),
+                    )
+                  : _photo != null || _existing?.photoUrl != null
+                  ? SproutCirclePhoto(
+                      url: _photo == null ? _existing?.photoUrl : null,
+                      bytes: _photo,
+                    )
+                  : DecoratedBox(
+                      decoration: BoxDecoration(
                         color: careField,
-                        child: Center(
-                          child: Text(
-                            plant ? '🌿' : '🐾',
-                            style: const TextStyle(fontSize: 24),
-                          ),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          plant ? '🌿' : '🐾',
+                          style: const TextStyle(fontSize: 24),
                         ),
                       ),
-              ),
+                    ),
             ),
             const SizedBox(width: 12),
             Text(
@@ -369,24 +391,35 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
             ),
           ],
         ),
+        ),
       ),
       CareLabel(plant ? 'PLANT NAME' : 'PET NAME'),
       CareNameField(
         controller: _name,
+        focusNode: _nameFocus,
         hint: plant ? 'e.g. Monstera, Snake Plant…' : 'e.g. Milo',
+        textInputAction: TextInputAction.next,
+        onSubmitted: (_) => _speciesFocus.requestFocus(),
         onChanged: (_) => setState(() {}),
       ),
       CareLabel(plant ? 'SPECIES (OPTIONAL)' : 'PET TYPE (OPTIONAL)'),
       CareNameField(
         controller: _species,
+        focusNode: _speciesFocus,
         hint: plant ? 'e.g. Monstera deliciosa' : 'e.g. Dog',
+        textInputAction: TextInputAction.next,
+        onSubmitted: (_) =>
+            plant ? _locationFocus.requestFocus() : _breedFocus.requestFocus(),
         onChanged: (_) => setState(() {}),
       ),
       if (!plant) ...[
         const CareLabel('BREED (OPTIONAL)'),
         CareNameField(
           controller: _breed,
+          focusNode: _breedFocus,
           hint: 'e.g. Golden Retriever',
+          textInputAction: TextInputAction.next,
+          onSubmitted: (_) => _notesFocus.requestFocus(),
           onChanged: (_) => setState(() {}),
         ),
       ],
@@ -394,7 +427,10 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
         const CareLabel('WHERE IT LIVES'),
         CareNameField(
           controller: _location,
+          focusNode: _locationFocus,
           hint: 'e.g. Living room',
+          textInputAction: TextInputAction.next,
+          onSubmitted: (_) => _notesFocus.requestFocus(),
           onChanged: (_) => setState(() {}),
         ),
         const CareLabel('WHEN LAST WATERED (OPTIONAL)'),
@@ -422,6 +458,7 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
       const CareLabel('NOTES'),
       CareNameField(
         controller: _notes,
+        focusNode: _notesFocus,
         hint: 'Anything worth remembering',
         maxLines: 3,
         onChanged: (_) => setState(() {}),

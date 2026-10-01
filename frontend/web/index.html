@@ -29,11 +29,11 @@
       overflow: hidden;
       background: #F8FEF9;
     }
+    /* HOST stays 0×0. The input is parked over the tapped control via
+       --sprout-picker-* so iOS anchors the photo menu there. */
     #__image_picker_web-file-input {
       display: block;
       position: fixed;
-      left: 0;
-      bottom: 0;
       width: 0;
       height: 0;
       margin: 0;
@@ -42,21 +42,22 @@
       overflow: visible;
       pointer-events: none;
     }
-    /* The picker UI is anchored to this input, so it is kept inside the phone
-       frame instead of spanning the whole desktop window. */
     #__image_picker_web-file-input input {
-      display: block;
-      position: fixed;
-      left: 50%;
-      bottom: 0;
-      width: min(430px, 100vw);
-      max-width: 430px;
-      transform: translateX(-50%);
-      height: 72px;
+      display: block !important;
+      position: fixed !important;
+      left: var(--sprout-picker-left, -9999px) !important;
+      top: var(--sprout-picker-top, -9999px) !important;
+      width: var(--sprout-picker-width, 1px) !important;
+      height: var(--sprout-picker-height, 1px) !important;
+      bottom: auto !important;
+      right: auto !important;
+      max-width: none !important;
+      transform: none !important;
       margin: 0;
       padding: 0;
       border: 0;
       opacity: 0.01;
+      pointer-events: none;
     }
   </style>
 

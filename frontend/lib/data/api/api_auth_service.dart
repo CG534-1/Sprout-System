@@ -31,6 +31,7 @@ class ApiAuthService extends AuthService {
   var _routingDirty = false;
   DateTime? _codeSentAt;
   var _sessionExpired = false;
+  var _muteAdopt = false;
   SharedPreferences? _prefs;
   Timer? _keepAlive;
 
@@ -210,6 +211,7 @@ class ApiAuthService extends AuthService {
       if (trimmedEmail.isEmpty || !trimmedEmail.contains('@')) {
         throw const AppException('Enter a valid email.');
       }
+      await _rejectTakenEmail(trimmedEmail);
       await _supabase.auth.signInWithOtp(
         email: trimmedEmail,
         shouldCreateUser: true,
@@ -231,11 +233,29 @@ class ApiAuthService extends AuthService {
       if (token.length != 6 || int.tryParse(token) == null) {
         throw const AppException('Enter the 6-digit code from your email.');
       }
-      await _supabase.auth.verifyOTP(
-        email: email.trim(),
-        token: token,
-        type: OtpType.email,
-      );
+      _muteAdopt = true;
+      try {
+        await _supabase.auth.verifyOTP(
+          email: email.trim(),
+          token: token,
+          type: OtpType.email,
+        );
+        final user = _supabase.auth.currentUser;
+        final meta = user?.userMetadata ?? {};
+        final pending = _flag(meta['signup_pending']) && !_flag(meta['password_set']);
+        if (!pending) {
+          try {
+            await _supabase.auth.signOut();
+          } on AuthException {
+            // Local session still has to drop.
+          }
+          _user = null;
+          _pendingSignup = false;
+          throw const AppException(takenEmailMessage);
+        }
+      } finally {
+        _muteAdopt = false;
+      }
       keepAlive();
       await _adoptSession();
     }, op: AuthOp.code);
@@ -309,6 +329,7 @@ class ApiAuthService extends AuthService {
         _markCodeSent();
         return;
       }
+      await _rejectTakenEmail(trimmed);
       await _supabase.auth.signInWithOtp(
         email: trimmed,
         shouldCreateUser: true,
@@ -471,7 +492,16 @@ class ApiAuthService extends AuthService {
     notifyListeners();
   }
 
+  Future<void> _rejectTakenEmail(String email) async {
+    try {
+      await _client.send('POST', '/public/signup-email', body: {'email': email});
+    } on AppException catch (error) {
+      if (error.message == takenEmailMessage) rethrow;
+    }
+  }
+
   Future<void> _adoptSession() async {
+    if (_muteAdopt) return;
     final user = _supabase.auth.currentUser;
     if (user == null) {
       _pendingSignup = false;
@@ -510,6 +540,7 @@ class ApiAuthService extends AuthService {
   Future<void> _loadProfile() async {
     try {
       final data = await _client.send('GET', '/api/me');
+      if (_muteAdopt) return;
       _user = UserProfile.fromJson(Map<String, dynamic>.from(data as Map));
       notifyListeners();
     } on AppException {

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:sprout/core/app_exception.dart';
+import 'package:sprout/data/api/auth_errors.dart';
 import 'package:sprout/data/mock/mock_store.dart';
 import 'package:sprout/data/models/user_profile.dart';
 import 'package:sprout/data/services/auth_service.dart';
@@ -32,11 +33,13 @@ class MockAuthService extends AuthService {
   Future<void> signIn({required String email, required String password}) async {
     await _store.pause();
     _requireCredentials(email, password);
+    _rememberEmail(email);
     _store.currentUser = MockStore.demoProfile.copyWith(email: email.trim());
     notifyListeners();
   }
 
   DateTime? _codeSentAt;
+  final _takenEmails = <String>{};
 
   @override
   DateTime? get codeSentAt => _codeSentAt;
@@ -55,12 +58,14 @@ class MockAuthService extends AuthService {
     if (trimmed.isEmpty || !trimmed.contains('@')) {
       throw const AppException('Enter a valid email.');
     }
+    _rejectTakenEmail(trimmed);
     _codeSentAt = DateTime.now();
   }
 
   @override
   Future<void> confirmEmailCode({required String email, required String code}) async {
     await _store.pause();
+    _rejectTakenEmail(email);
     _requireCode(email, code);
   }
 
@@ -99,6 +104,9 @@ class MockAuthService extends AuthService {
     final trimmed = email.trim();
     if (trimmed.isEmpty || !trimmed.contains('@')) {
       throw const AppException('Enter a valid email.');
+    }
+    if (!recovery && !emailChange) {
+      _rejectTakenEmail(trimmed);
     }
     _codeSentAt = DateTime.now();
   }
@@ -148,6 +156,7 @@ class MockAuthService extends AuthService {
       throw const AppException('Enter your name.');
     }
     _requireCredentials(email, password);
+    _rememberEmail(email);
     _store.currentUser = UserProfile(
       id: MockStore.demoProfile.id,
       name: name.trim(),
@@ -225,6 +234,16 @@ class MockAuthService extends AuthService {
   void syncProfile(UserProfile profile) {
     _store.currentUser = profile;
     notifyListeners();
+  }
+
+  void _rememberEmail(String email) {
+    _takenEmails.add(email.trim().toLowerCase());
+  }
+
+  void _rejectTakenEmail(String email) {
+    if (_takenEmails.contains(email.trim().toLowerCase())) {
+      throw const AppException(takenEmailMessage);
+    }
   }
 
   void _requireCredentials(String email, String password) {

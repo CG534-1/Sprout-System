@@ -98,21 +98,26 @@ void main() {
     await tester.tap(find.text('Next'));
     await tester.pumpAndSettle();
 
-    // Next opens the schedule page, with the name fields on it.
+    // Next opens the details page, same as edit — not the plan.
     expect(find.text('Add to your care'), findsNothing);
     expect(find.text('Add a pet'), findsOneWidget);
     expect(find.text('PET NAME'), findsOneWidget);
-    expect(find.text('Feeding'), findsOneWidget);
+    expect(find.text('Feeding'), findsNothing);
     await tester.enterText(find.byType(TextField).first, 'Bean');
     await tester.pump();
+    await tester.tap(find.text('Set up care schedule →'));
+    await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.text('1x / day'));
+    // Then the plan is its own page.
+    expect(find.text('Add a pet'), findsNothing);
+    expect(find.text('Care plan'), findsOneWidget);
+    expect(find.text('Feeding'), findsOneWidget);
+    expect(find.text('Walks'), findsOneWidget);
+
     await tester.tap(find.text('1x / day'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Morning'));
     await tester.tap(find.text('Morning'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Add Bean 🐾'));
     await tester.tap(find.text('Add Bean 🐾'));
     await tester.pumpAndSettle();
 
@@ -261,6 +266,39 @@ void main() {
     expect(tester.widget<SlabButton>(find.byType(SlabButton)).enabled, isTrue);
 
     await _letToastsGo(tester);
+  });
+
+  testWidgets('a finished email never reaches the code page', (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final services = AppServices.mock(delay: Duration.zero);
+    services.auth.completeOnboarding();
+    await services.auth.signIn(email: 'ama@sprout.app', password: 'secret1');
+    await services.auth.signOut();
+    services.auth.markSplashSeen();
+    await tester.pumpWidget(SproutApp(services: services));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Create an account'));
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'Ama');
+    await tester.enterText(fields.at(1), 'Mensah');
+    await tester.enterText(fields.at(2), 'ama@sprout.app');
+    await tester.pump();
+    await tester.tap(find.text('Get Started'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(OtpPage), findsNothing);
+    expect(
+      find.text('That email already has an account. Sign in instead.'),
+      findsOneWidget,
+    );
+    expect(find.text('Get Started'), findsOneWidget);
   });
 }
 

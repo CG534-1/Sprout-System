@@ -288,7 +288,7 @@ class _AvatarSheetState extends State<_AvatarSheet> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final bytes = await pickCarePhoto();
+      final bytes = await pickCarePhoto(from: context);
       if (!mounted) return;
       if (bytes == null) {
         setState(() => _busy = false);
@@ -367,7 +367,7 @@ class _AvatarSheetState extends State<_AvatarSheet> {
                               ),
                             ],
                           )
-                        : Image.memory(photo!, fit: BoxFit.cover),
+                        : SproutCirclePhoto(bytes: photo),
                   ),
                 );
               }
@@ -418,7 +418,11 @@ class _Face extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(4),
         child: ClipOval(
-          child: ColoredBox(color: AppColors.field, child: child),
+          clipBehavior: Clip.hardEdge,
+          child: ColoredBox(
+            color: AppColors.field,
+            child: SizedBox.expand(child: child),
+          ),
         ),
       ),
     );

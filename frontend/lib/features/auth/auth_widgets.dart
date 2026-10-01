@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sprout/core/theme/app_colors.dart';
+import 'package:sprout/core/widgets/keyboard.dart';
 import 'package:sprout/core/widgets/sprout_toast.dart';
 
 Color get authInk => AppColors.ink;
@@ -201,31 +202,6 @@ class _AuthFieldState extends State<AuthField> with WidgetsBindingObserver {
       ],
     );
   }
-}
-
-void revealFieldAboveKeyboard(BuildContext context) {
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    if (!context.mounted) return;
-    final object = context.findRenderObject();
-    if (object is! RenderBox || !object.attached || !object.hasSize) return;
-    final scrollable = Scrollable.maybeOf(context);
-    if (scrollable == null || !scrollable.position.hasContentDimensions) {
-      return;
-    }
-    final position = scrollable.position;
-    final inset = MediaQuery.viewInsetsOf(context).bottom;
-    if (inset < 1) return;
-    final visibleBottom = MediaQuery.sizeOf(context).height - inset - 16;
-    final origin = object.localToGlobal(Offset.zero);
-    final overflow = origin.dy + object.size.height - visibleBottom;
-    if (overflow <= 1) return;
-    final target = (position.pixels + overflow).clamp(
-      position.minScrollExtent,
-      position.maxScrollExtent,
-    );
-    if (target <= position.pixels + 0.5) return;
-    position.jumpTo(target);
-  });
 }
 
 class SlabButton extends StatelessWidget {

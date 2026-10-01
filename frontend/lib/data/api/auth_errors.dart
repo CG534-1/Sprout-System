@@ -5,6 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// wrong code on the code page, and those need different sentences.
 enum AuthOp { signIn, code, password, send, general }
 
+const takenEmailMessage = 'That email already has an account. Sign in instead.';
+
 String authErrorMessage(AuthException error, AuthOp op) {
   final code = error.code ?? '';
   final text = error.message.toLowerCase();
@@ -49,7 +51,7 @@ String authErrorMessage(AuthException error, AuthOp op) {
       code == 'user_already_exists' ||
       text.contains('already registered') ||
       text.contains('already been registered')) {
-    return 'That email already has an account. Sign in instead.';
+    return takenEmailMessage;
   }
   if (code == 'same_password' ||
       text.contains('different from the old password')) {

@@ -26,29 +26,79 @@ class PersonAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bytes = avatarBytes;
-    final url = avatarUrl;
-    if (bytes != null) {
-      return Image.memory(bytes, fit: BoxFit.cover);
+    return SproutCirclePhoto(
+      bytes: avatarBytes,
+      url: avatarUrl,
+      fallback: sproutInitials(name),
+    );
+  }
+}
+
+/// A photo painted as a circle. Decoration images stay inside the oval on
+/// web, where [ClipOval] plus [Image] often leaks past the ring.
+class SproutCirclePhoto extends StatelessWidget {
+  const SproutCirclePhoto({
+    super.key,
+    this.bytes,
+    this.asset,
+    this.url,
+    this.fallback = '',
+    this.fallbackSize = 18,
+    this.iconSize = 36,
+  });
+
+  final Uint8List? bytes;
+  final String? asset;
+  final String? url;
+  final String fallback;
+  final double fallbackSize;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final ImageProvider? image;
+    var fit = BoxFit.cover;
+    final rawBytes = bytes;
+    final rawAsset = asset;
+    final rawUrl = url?.trim() ?? '';
+    if (rawBytes != null) {
+      image = MemoryImage(rawBytes);
+    } else if (rawAsset != null && rawAsset.isNotEmpty) {
+      image = AssetImage(rawAsset);
+      fit = BoxFit.contain;
+    } else if (rawUrl.startsWith('assets/')) {
+      image = AssetImage(rawUrl);
+      fit = BoxFit.contain;
+    } else if (rawUrl.isNotEmpty) {
+      image = NetworkImage(rawUrl);
+    } else {
+      image = null;
     }
-    if (url != null && url.isNotEmpty) {
-      if (url.startsWith('assets/')) {
-        return Image.asset(url, fit: BoxFit.contain);
-      }
-      return Image.network(url, fit: BoxFit.cover);
-    }
-    return ColoredBox(
-      color: AppColors.field,
-      child: Center(
-        child: Text(
-          sproutInitials(name),
-          style: GoogleFonts.fraunces(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppColors.sproutGreen,
-          ),
-        ),
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppColors.field,
+        image: image == null ? null : DecorationImage(image: image, fit: fit),
       ),
+      child: image != null
+          ? null
+          : Center(
+              child: fallback.isEmpty
+                  ? Icon(
+                      Icons.person_outline,
+                      color: AppColors.sproutGreen,
+                      size: iconSize,
+                    )
+                  : Text(
+                      fallback,
+                      style: GoogleFonts.fraunces(
+                        fontSize: fallbackSize,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.sproutGreen,
+                      ),
+                    ),
+            ),
     );
   }
 }

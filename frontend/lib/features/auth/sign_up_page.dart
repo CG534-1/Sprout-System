@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/photo_picker.dart';
+import 'package:sprout/core/widgets/person_avatar.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/widgets/sprout_toast.dart';
@@ -882,7 +883,7 @@ class _AvatarSheetState extends State<_AvatarSheet> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final file = await pickCarePhoto();
+      final file = await pickCarePhoto(from: context);
       if (!mounted) return;
       if (file == null) {
         setState(() => _busy = false);
@@ -1115,26 +1116,11 @@ class _MemojiFace extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipOval(
-      child: ColoredBox(
-        color: AppColors.field,
-        child: bytes != null
-            ? Image.memory(bytes!, fit: BoxFit.cover)
-            : asset != null
-            ? Image.asset(asset!, fit: BoxFit.contain)
-            : Center(
-                child: initials.isEmpty
-                    ? const Icon(Icons.person_outline, color: AppColors.sproutGreen, size: 36)
-                    : Text(
-                        initials,
-                        style: GoogleFonts.fraunces(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.sproutGreen,
-                        ),
-                      ),
-              ),
-      ),
+    return SproutCirclePhoto(
+      bytes: bytes,
+      asset: asset,
+      fallback: initials,
+      fallbackSize: 28,
     );
   }
 }

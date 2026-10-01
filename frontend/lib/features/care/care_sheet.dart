@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sprout/core/theme/app_colors.dart';
+import 'package:sprout/core/widgets/keyboard.dart';
 import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/data/models/care_enums.dart';
 
@@ -34,7 +35,9 @@ class CareSheet extends StatelessWidget {
             constraints: BoxConstraints(maxHeight: maxHeight),
             child: Material(
               color: AppColors.onboardingPaper,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(22),
+              ),
               clipBehavior: Clip.antiAlias,
               child: child,
             ),
@@ -130,11 +133,7 @@ class CarePageHeader extends StatelessWidget {
 }
 
 class CareSheetHeader extends StatelessWidget {
-  const CareSheetHeader({
-    super.key,
-    required this.title,
-    this.onBack,
-  });
+  const CareSheetHeader({super.key, required this.title, this.onBack});
 
   final String title;
   final VoidCallback? onBack;
@@ -144,7 +143,9 @@ class CareSheetHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(22, 18, 22, 14),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.dotIdle, width: 0.8)),
+        border: Border(
+          bottom: BorderSide(color: AppColors.dotIdle, width: 0.8),
+        ),
       ),
       child: Row(
         children: [
@@ -203,7 +204,10 @@ class CareCloseButton extends StatelessWidget {
         ),
         child: Text(
           '✕',
-          style: GoogleFonts.dmSans(fontSize: 12, color: AppColors.onboardingBody),
+          style: GoogleFonts.dmSans(
+            fontSize: 12,
+            color: AppColors.onboardingBody,
+          ),
         ),
       ),
     );
@@ -295,36 +299,103 @@ class CareLabel extends StatelessWidget {
   }
 }
 
-class CareNameField extends StatelessWidget {
+class CareNameField extends StatefulWidget {
   const CareNameField({
     super.key,
     required this.controller,
     required this.hint,
     required this.onChanged,
+    this.focusNode,
     this.maxLines = 1,
     this.keyboardType,
+    this.textInputAction,
+    this.onSubmitted,
   });
 
   final TextEditingController controller;
   final String hint;
   final ValueChanged<String> onChanged;
+  final FocusNode? focusNode;
   final int maxLines;
   final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final ValueChanged<String>? onSubmitted;
+
+  @override
+  State<CareNameField> createState() => _CareNameFieldState();
+}
+
+class _CareNameFieldState extends State<CareNameField>
+    with WidgetsBindingObserver {
+  FocusNode? _owned;
+  late FocusNode _focus;
+
+  @override
+  void initState() {
+    super.initState();
+    _owned = widget.focusNode == null ? FocusNode() : null;
+    _focus = widget.focusNode ?? _owned!;
+    _focus.addListener(_onFocus);
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didUpdateWidget(CareNameField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode == widget.focusNode) return;
+    _focus.removeListener(_onFocus);
+    _owned?.dispose();
+    _owned = widget.focusNode == null ? FocusNode() : null;
+    _focus = widget.focusNode ?? _owned!;
+    _focus.addListener(_onFocus);
+  }
+
+  void _onFocus() {
+    if (_focus.hasFocus) revealFieldAboveKeyboard(context);
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (_focus.hasFocus) revealFieldAboveKeyboard(context);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _focus.removeListener(_onFocus);
+    _owned?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return TextField(
-      controller: controller,
-      onChanged: onChanged,
-      maxLines: maxLines,
-      keyboardType: keyboardType,
+      focusNode: _focus,
+      controller: widget.controller,
+      onChanged: widget.onChanged,
+      onSubmitted: widget.onSubmitted,
+      maxLines: widget.maxLines,
+      keyboardType: widget.keyboardType,
+      textInputAction:
+          widget.textInputAction ??
+          (widget.maxLines > 1
+              ? TextInputAction.newline
+              : TextInputAction.next),
+      autofocus: false,
+      cursorColor: AppColors.primary,
       style: GoogleFonts.dmSans(fontSize: 14, color: careInk),
       decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: GoogleFonts.dmSans(fontSize: 14, color: AppColors.onboardingBody),
+        hintText: widget.hint,
+        hintStyle: GoogleFonts.dmSans(
+          fontSize: 14,
+          color: AppColors.onboardingBody,
+        ),
         filled: true,
         fillColor: careField,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: AppColors.dotIdle, width: 0.8),
@@ -378,11 +449,7 @@ class CareChip extends StatelessWidget {
 }
 
 class CareSlots extends StatelessWidget {
-  const CareSlots({
-    super.key,
-    required this.selected,
-    required this.onToggle,
-  });
+  const CareSlots({super.key, required this.selected, required this.onToggle});
 
   final Set<CareSlot> selected;
   final ValueChanged<CareSlot> onToggle;
@@ -435,7 +502,10 @@ class _SlotCard extends StatelessWidget {
           children: [
             Column(
               children: [
-                Text(slot.mark, style: const TextStyle(fontSize: 22, height: 1.4)),
+                Text(
+                  slot.mark,
+                  style: const TextStyle(fontSize: 22, height: 1.4),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   slot.label,

@@ -3,6 +3,7 @@ import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { localDayKey, utcOffsetMinutes, duesOnCycle } from './care.js';
 import { dispatchReminders } from './dispatch.js';
+import { signupEmailTaken } from './signup.js';
 
 const bucket = 'care-media';
 
@@ -14,6 +15,46 @@ export function createApp() {
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true });
+  });
+
+  app.post('/public/signup-email', async (req, res, next) => {
+    try {
+      if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        res.status(503).json({ message: 'API is not configured.' });
+        return;
+      }
+      const email = String(req.body.email ?? '').trim().toLowerCase();
+      if (!email || !email.includes('@')) {
+        res.status(400).json({ message: 'Enter a valid email.' });
+        return;
+      }
+      const admin = service();
+      let user = null;
+      try {
+        const { data, error } = await admin.auth.admin.getUserByEmail(email);
+        if (!error) user = data?.user ?? null;
+      } catch {
+        user = null;
+      }
+      if (!user) {
+        res.json({ ok: true });
+        return;
+      }
+      const { data: profile } = await admin
+        .from('profiles')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (signupEmailTaken(user, profile)) {
+        res.status(409).json({
+          message: 'That email already has an account. Sign in instead.',
+        });
+        return;
+      }
+      res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.post('/api/internal/dispatch-reminders', async (req, res, next) => {
