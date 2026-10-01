@@ -27,6 +27,20 @@ class MockCareService extends CareService {
   }
 
   @override
+  Future<CareTask?> upcomingAfter(DateTime today) async {
+    await _store.pause();
+    for (var offset = 1; offset <= 7; offset++) {
+      final day = today.add(Duration(days: offset));
+      final open = _store.tasks
+          .where((task) => isSameDay(task.dueAt, day) && task.status != TaskStatus.done)
+          .toList()
+        ..sort((a, b) => a.dueAt.compareTo(b.dueAt));
+      if (open.isNotEmpty) return open.first;
+    }
+    return null;
+  }
+
+  @override
   Future<void> completeTask(String taskId) async {
     await _store.pause();
     final index = _store.tasks.indexWhere((task) => task.id == taskId);

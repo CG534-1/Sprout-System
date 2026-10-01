@@ -53,25 +53,48 @@ GoRouter createAppRouter(AuthService auth) {
         path: AppRoutes.resetPassword,
         builder: (context, state) => const ResetPasswordPage(),
       ),
-      GoRoute(
-        path: AppRoutes.today,
-        builder: (context, state) => const TodayPage(),
-      ),
-      GoRoute(
-        path: AppRoutes.myCare,
-        builder: (context, state) => const MyCarePage(),
-      ),
-      GoRoute(
-        path: AppRoutes.history,
-        builder: (context, state) => const HistoryPage(),
-      ),
-      GoRoute(
-        path: AppRoutes.profile,
-        builder: (context, state) => const ProfilePage(),
-      ),
-      GoRoute(
-        path: AppRoutes.updateDetails,
-        builder: (context, state) => const UpdateDetailsPage(),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) => navigationShell,
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.today,
+                builder: (context, state) => const TodayPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.myCare,
+                builder: (context, state) => const MyCarePage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.history,
+                builder: (context, state) => const HistoryPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.profile,
+                builder: (context, state) => const ProfilePage(),
+                routes: [
+                  GoRoute(
+                    path: 'details',
+                    builder: (context, state) => const UpdateDetailsPage(),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
       ),
     ],
   );

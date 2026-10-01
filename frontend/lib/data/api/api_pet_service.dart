@@ -11,13 +11,16 @@ class ApiPetService extends PetService {
 
   final SupabaseClient _supabase;
   final ApiClient _client;
+  List<Pet>? _pets;
 
   @override
   Future<List<Pet>> listPets() async {
+    if (_pets != null) return _pets!;
     final data = await _client.send('GET', '/api/pets');
-    return (data as List)
+    _pets = (data as List)
         .map((item) => Pet.fromJson(Map<String, dynamic>.from(item as Map)))
         .toList();
+    return _pets!;
   }
 
   @override
@@ -46,8 +49,10 @@ class ApiPetService extends PetService {
         'photoPath': photoPath,
       },
     );
+    _pets = null;
     notifyListeners();
-    return Pet.fromJson(Map<String, dynamic>.from(data as Map));
+    final created = Pet.fromJson(Map<String, dynamic>.from(data as Map));
+    return created.copyWith(photoBytes: photoBytes, photoUrl: created.photoUrl);
   }
 
   @override
@@ -64,13 +69,16 @@ class ApiPetService extends PetService {
         if (photoPath != null) 'photoPath': photoPath,
       },
     );
+    _pets = null;
     notifyListeners();
-    return Pet.fromJson(Map<String, dynamic>.from(data as Map));
+    final updated = Pet.fromJson(Map<String, dynamic>.from(data as Map));
+    return updated.copyWith(photoBytes: pet.photoBytes, photoUrl: updated.photoUrl);
   }
 
   @override
   Future<void> deletePet(String id) async {
     await _client.send('DELETE', '/api/pets/$id');
+    _pets = null;
     notifyListeners();
   }
 

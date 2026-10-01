@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/data/models/care_enums.dart';
 import 'package:sprout/data/models/care_schedule.dart';
@@ -255,18 +256,26 @@ class _AddCareSheetState extends State<_AddCareSheet> {
     final breed = _breed.text.trim();
     final location = _location.text.trim();
     final notes = _notes.text.trim();
+    final existing = widget.existing;
+    final kind = _kind;
+    final photo = _photo;
+    final entries = _entries();
+    final plants = context.read<PlantService>();
+    final pets = context.read<PetService>();
+    final care = context.read<CareService>();
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (mounted) Navigator.of(context).pop();
     try {
-      final existing = widget.existing;
       final String id;
-      if (existing != null && _kind == _Kind.plant) {
+      if (existing != null && kind == _Kind.plant) {
         id = existing.id;
-        await context.read<PlantService>().updatePlant(
+        await plants.updatePlant(
           Plant(
             id: id,
             name: name,
             species: species,
-            photoUrl: _photo == null ? existing.photoUrl : null,
-            photoBytes: _photo ?? existing.photoBytes,
+            photoUrl: photo == null ? existing.photoUrl : null,
+            photoBytes: photo ?? existing.photoBytes,
             location: location.isEmpty ? null : location,
             notes: notes.isEmpty ? null : notes,
             createdAt: existing.createdAt,
@@ -274,49 +283,45 @@ class _AddCareSheetState extends State<_AddCareSheet> {
         );
       } else if (existing != null) {
         id = existing.id;
-        await context.read<PetService>().updatePet(
+        await pets.updatePet(
           Pet(
             id: id,
             name: name,
             species: species,
             breed: breed,
-            photoUrl: _photo == null ? existing.photoUrl : null,
-            photoBytes: _photo ?? existing.photoBytes,
+            photoUrl: photo == null ? existing.photoUrl : null,
+            photoBytes: photo ?? existing.photoBytes,
             notes: notes.isEmpty ? null : notes,
             createdAt: existing.createdAt,
           ),
         );
-      } else if (_kind == _Kind.plant) {
-        final plant = await context.read<PlantService>().createPlant(
+      } else if (kind == _Kind.plant) {
+        final plant = await plants.createPlant(
           name: name,
           species: species,
           location: location,
           notes: notes,
-          photoBytes: _photo,
+          photoBytes: photo,
         );
         id = plant.id;
       } else {
-        final pet = await context.read<PetService>().createPet(
+        final pet = await pets.createPet(
           name: name,
           species: species,
           breed: breed,
           notes: notes,
-          photoBytes: _photo,
+          photoBytes: photo,
         );
         id = pet.id;
       }
-      if (!mounted) return;
-      await context.read<CareService>().savePlan(
+      await care.savePlan(
         subjectId: id,
         subjectName: name,
-        subjectType: _kind == _Kind.plant
-            ? CareSubjectType.plant
-            : CareSubjectType.pet,
-        entries: _entries(),
+        subjectType: kind == _Kind.plant ? CareSubjectType.plant : CareSubjectType.pet,
+        entries: entries,
       );
-      if (mounted) Navigator.of(context).pop();
-    } finally {
-      if (mounted) setState(() => _saving = false);
+    } on AppException catch (error) {
+      messenger?.showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 

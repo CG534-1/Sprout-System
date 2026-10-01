@@ -420,6 +420,13 @@ export function createApp() {
       const date = req.query.date || localDayKey(new Date().toISOString(), offset);
       const { data, error } = await req.db.from('care_tasks').select('*');
       if (error) throw error;
+      if (req.query.upcoming === '1') {
+        const next = (data ?? [])
+          .filter((row) => row.status === 'due' && localDayKey(row.due_at, offset) > date)
+          .sort((a, b) => new Date(a.due_at) - new Date(b.due_at))[0];
+        res.json(next ? [taskJson(next)] : []);
+        return;
+      }
       const tasks = data
         .filter((row) => localDayKey(row.due_at, offset) === date)
         .map(taskJson)

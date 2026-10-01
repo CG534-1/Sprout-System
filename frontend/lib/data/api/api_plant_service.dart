@@ -11,11 +11,14 @@ class ApiPlantService extends PlantService {
 
   final SupabaseClient _supabase;
   final ApiClient _client;
+  List<Plant>? _plants;
 
   @override
   Future<List<Plant>> listPlants() async {
+    if (_plants != null) return _plants!;
     final data = await _client.send('GET', '/api/plants');
-    return _list(data);
+    _plants = _list(data);
+    return _plants!;
   }
 
   @override
@@ -44,8 +47,10 @@ class ApiPlantService extends PlantService {
         'photoPath': photoPath,
       },
     );
+    _plants = null;
     notifyListeners();
-    return Plant.fromJson(Map<String, dynamic>.from(data as Map));
+    final created = Plant.fromJson(Map<String, dynamic>.from(data as Map));
+    return created.copyWith(photoBytes: photoBytes, photoUrl: created.photoUrl);
   }
 
   @override
@@ -62,13 +67,16 @@ class ApiPlantService extends PlantService {
         if (photoPath != null) 'photoPath': photoPath,
       },
     );
+    _plants = null;
     notifyListeners();
-    return Plant.fromJson(Map<String, dynamic>.from(data as Map));
+    final updated = Plant.fromJson(Map<String, dynamic>.from(data as Map));
+    return updated.copyWith(photoBytes: plant.photoBytes, photoUrl: updated.photoUrl);
   }
 
   @override
   Future<void> deletePlant(String id) async {
     await _client.send('DELETE', '/api/plants/$id');
+    _plants = null;
     notifyListeners();
   }
 

@@ -15,6 +15,7 @@ import 'package:sprout/data/services/pet_service.dart';
 import 'package:sprout/data/services/plant_service.dart';
 import 'package:sprout/data/services/profile_service.dart';
 import 'package:sprout/features/care/add_care_sheet.dart';
+import 'package:sprout/features/care/care_sheet.dart';
 import 'package:sprout/features/shell/care_nav.dart';
 import 'package:sprout/features/shell/quiet_card.dart';
 import 'package:sprout/features/today/bell_sheet.dart';
@@ -34,24 +35,45 @@ class _TodayPageState extends State<TodayPage> {
   Map<String, String> _photos = {};
   var _loading = true;
   var _unread = 0;
+  CareService? _care;
+  PlantService? _plants;
+  PetService? _pets;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _care = context.read<CareService>()..addListener(_refresh);
+      _plants = context.read<PlantService>()..addListener(_refresh);
+      _pets = context.read<PetService>()..addListener(_refresh);
+      _load();
+    });
   }
 
-  Future<void> _load() async {
-    final care = context.read<CareService>();
-    final plants = context.read<PlantService>();
-    final pets = context.read<PetService>();
+  @override
+  void dispose() {
+    _care?.removeListener(_refresh);
+    _plants?.removeListener(_refresh);
+    _pets?.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() {
+    _load(notes: false);
+  }
+
+  Future<void> _load({bool notes = true}) async {
+    final care = _care ?? context.read<CareService>();
+    final plants = _plants ?? context.read<PlantService>();
+    final pets = _pets ?? context.read<PetService>();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final bundled = await (
       care.tasksFor(today),
       plants.listPlants(),
       pets.listPets(),
-      _nextTask(care, today),
+      care.upcomingAfter(today),
     ).wait;
     if (!mounted) return;
     final photos = <String, String>{};
@@ -70,7 +92,7 @@ class _TodayPageState extends State<TodayPage> {
       _upcoming = bundled.$4;
       _loading = false;
     });
-    await _loadNotes();
+    if (notes) await _loadNotes();
   }
 
   Future<void> _loadNotes() async {
@@ -84,25 +106,28 @@ class _TodayPageState extends State<TodayPage> {
     if (mounted) await _loadNotes();
   }
 
-  Future<CareTask?> _nextTask(CareService care, DateTime today) async {
-    for (var offset = 1; offset <= 7; offset++) {
-      final tasks = await care.tasksFor(today.add(Duration(days: offset)));
-      final open = tasks.where((task) => task.status != TaskStatus.done);
-      if (open.isNotEmpty) {
-        return (open.toList()..sort((a, b) => a.dueAt.compareTo(b.dueAt))).first;
-      }
-    }
-    return null;
-  }
-
   Future<void> _toggle(CareTask task) async {
+    setState(() {
+      _today = [
+        for (final item in _today)
+          if (item.id == task.id)
+            item.copyWith(
+              status: item.status == TaskStatus.done ? TaskStatus.due : TaskStatus.done,
+            )
+          else
+            item,
+      ];
+    });
     final care = context.read<CareService>();
-    if (task.status == TaskStatus.done) {
-      await care.reopenTask(task.id);
-    } else {
-      await care.completeTask(task.id);
+    try {
+      if (task.status == TaskStatus.done) {
+        await care.reopenTask(task.id);
+      } else {
+        await care.completeTask(task.id);
+      }
+    } catch (_) {
+      if (mounted) await _load(notes: false);
     }
-    if (mounted) await _load();
   }
 
   @override
@@ -729,7 +754,7 @@ class _Photo extends StatelessWidget {
         height: size,
         child: path == null
             ? ColoredBox(color: AppColors.field)
-            : Image.asset(path!, fit: BoxFit.cover),
+            : careImage(url: path),
       ),
     );
   }

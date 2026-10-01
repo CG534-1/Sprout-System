@@ -8,6 +8,7 @@ import 'package:sprout/data/models/care_history_entry.dart';
 import 'package:sprout/data/services/care_service.dart';
 import 'package:sprout/data/services/pet_service.dart';
 import 'package:sprout/data/services/plant_service.dart';
+import 'package:sprout/features/care/care_sheet.dart';
 import 'package:sprout/features/shell/care_nav.dart';
 import 'package:sprout/features/shell/quiet_card.dart';
 
@@ -290,7 +291,7 @@ class _HistoryRow extends StatelessWidget {
               height: 43,
               child: photo == null
                   ? ColoredBox(color: AppColors.field)
-                  : Image.asset(photo!, fit: BoxFit.cover),
+                  : careImage(url: photo),
             ),
           ),
           const SizedBox(width: 11),

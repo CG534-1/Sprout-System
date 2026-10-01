@@ -436,10 +436,20 @@ class CarePhoto extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (bytes != null) return Image.memory(bytes!, fit: fit);
-    if (url != null) return Image.asset(url!, fit: fit);
-    return ColoredBox(color: careField);
+    return careImage(url: url, bytes: bytes, fit: fit);
   }
+}
+
+Widget careImage({String? url, Uint8List? bytes, BoxFit fit = BoxFit.cover}) {
+  if (bytes != null) return Image.memory(bytes, fit: fit);
+  final path = url?.trim() ?? '';
+  if (path.isEmpty) return ColoredBox(color: careField);
+  if (path.startsWith('assets/')) return Image.asset(path, fit: fit);
+  return Image.network(
+    path,
+    fit: fit,
+    errorBuilder: (context, error, stack) => ColoredBox(color: careField),
+  );
 }
 
 class CareActionButton extends StatelessWidget {
