@@ -40,26 +40,22 @@ class _SignUpPageState extends State<SignUpPage> {
   var _obscure = true;
   var _agreed = false;
   var _submitting = false;
-  var _appliedPending = false;
 
   @override
   void initState() {
     super.initState();
+    final auth = context.read<AuthService>();
+    if (auth.pendingSignup) {
+      _step = 1;
+      _first.text = auth.pendingFirst ?? '';
+      _last.text = auth.pendingLast ?? '';
+      _email.text = auth.pendingEmail ?? '';
+    }
     _first.addListener(_refresh);
     _last.addListener(_refresh);
     _email.addListener(_refresh);
     _password.addListener(_refresh);
     _leaveFieldsAlone();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _appliedPending) return;
-      final auth = context.read<AuthService>();
-      if (!auth.pendingSignup) return;
-      _appliedPending = true;
-      _step = 1;
-      _first.text = auth.pendingFirst ?? '';
-      _last.text = auth.pendingLast ?? '';
-      _email.text = auth.pendingEmail ?? '';
-    });
   }
 
   void _leaveFieldsAlone() {

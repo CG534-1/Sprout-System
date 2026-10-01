@@ -26,7 +26,7 @@ class _OtpPageState extends State<OtpPage> {
   String? _error;
   var _checking = false;
   var _resending = false;
-  static const _resendWait = 120;
+  static const _resendWait = 60;
   var _secondsLeft = _resendWait;
   Timer? _wait;
 
@@ -98,7 +98,7 @@ class _OtpPageState extends State<OtpPage> {
       }
       await auth.confirmEmailCode(email: widget.email, code: _code.text);
       if (!mounted) return;
-      context.pop(true);
+      context.go(AppRoutes.signUp);
     } on AppException catch (error) {
       if (!mounted) return;
       setState(() {
