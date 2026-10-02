@@ -36,6 +36,8 @@ class _TodayPageState extends State<TodayPage> {
   CareTask? _upcoming;
   Map<String, String> _photos = {};
   var _loading = true;
+  var _hasHome = false;
+  var _loadGen = 0;
   var _unread = 0;
   CareService? _care;
   PlantService? _plants;
@@ -66,6 +68,7 @@ class _TodayPageState extends State<TodayPage> {
   }
 
   Future<void> _load({bool notes = true}) async {
+    final gen = ++_loadGen;
     final care = _care ?? context.read<CareService>();
     final plants = _plants ?? context.read<PlantService>();
     final pets = _pets ?? context.read<PetService>();
@@ -87,7 +90,7 @@ class _TodayPageState extends State<TodayPage> {
       petList = loaded.$3;
       upcoming = loaded.$4;
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       setState(() => _loading = false);
       showSproutToast(
         context,
@@ -96,7 +99,7 @@ class _TodayPageState extends State<TodayPage> {
       );
       return;
     }
-    if (!mounted) return;
+    if (!mounted || gen != _loadGen) return;
     final photos = <String, String>{};
     for (final plant in plantList) {
       final url = plant.photoUrl;
@@ -111,6 +114,7 @@ class _TodayPageState extends State<TodayPage> {
         ..sort((a, b) => a.dueAt.compareTo(b.dueAt));
       _photos = photos;
       _upcoming = upcoming;
+      _hasHome = plantList.isNotEmpty || petList.isNotEmpty;
       _loading = false;
     });
     if (notes) await _loadNotes();
@@ -166,7 +170,8 @@ class _TodayPageState extends State<TodayPage> {
     final first = name.trim().split(RegExp(r'\s+')).first;
     final done = _today.where((task) => task.status == TaskStatus.done).length;
     final caughtUp = _today.isNotEmpty && done == _today.length;
-    final quiet = !_loading && _today.isEmpty;
+    final noHome = !_loading && !_hasHome;
+    final idle = !_loading && _hasHome && _today.isEmpty;
 
     return Scaffold(
       backgroundColor: AppColors.onboardingPaper,
@@ -184,22 +189,33 @@ class _TodayPageState extends State<TodayPage> {
                   onBell: _openBell,
                 ),
                 const SizedBox(height: 24),
-                _Hero(count: _today.length, caughtUp: caughtUp, quiet: quiet),
+                _Hero(
+                  count: _today.length,
+                  caughtUp: caughtUp,
+                  quiet: noHome,
+                  idle: idle,
+                ),
                 const SizedBox(height: 26),
                 _SectionTitle(
                   title: "Today's care",
-                  trailing: _loading || quiet
+                  trailing: _loading || noHome || idle
                       ? ''
                       : '$done/${_today.length} complete',
                 ),
                 const SizedBox(height: 12),
-                if (quiet)
+                if (noHome)
                   QuietCard(
                     icon: Icons.spa_outlined,
                     title: 'Your home is empty',
                     body: 'Add a plant or a pet. Their care will show up here.',
                     action: 'Add someone',
                     onAction: () => showAddCareSheet(context),
+                  )
+                else if (idle)
+                  const QuietCard(
+                    icon: Icons.event_available_outlined,
+                    title: 'Nothing due today',
+                    body: 'Their next care is further down the week.',
                   ),
                 for (final task in _today) ...[
                   _TaskCard(
@@ -213,7 +229,7 @@ class _TodayPageState extends State<TodayPage> {
                   const SizedBox(height: 1),
                   const _CaughtUpNote(),
                 ],
-                if (!quiet && !_loading) ...[
+                if (!noHome && !_loading) ...[
                   const SizedBox(height: 18),
                   const _SectionTitle(
                     title: 'Coming up',
@@ -413,11 +429,13 @@ class _Hero extends StatelessWidget {
     required this.count,
     required this.caughtUp,
     required this.quiet,
+    this.idle = false,
   });
 
   final int count;
   final bool caughtUp;
   final bool quiet;
+  final bool idle;
 
   @override
   Widget build(BuildContext context) {
@@ -425,11 +443,15 @@ class _Hero extends StatelessWidget {
         ? 'All caught up! 🌿'
         : quiet
         ? 'A quiet day'
+        : idle
+        ? 'A quiet day'
         : '$count care ${count == 1 ? 'task' : 'tasks'} today';
     final body = caughtUp
         ? 'The ones you love are cared for.'
         : quiet
         ? 'Nothing is due until someone joins your home.'
+        : idle
+        ? 'Nothing is due today. Check Coming up for the next visit.'
         : 'A little attention goes a long way.';
     return Container(
       height: caughtUp ? 123 : 120,

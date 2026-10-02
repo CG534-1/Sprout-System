@@ -164,6 +164,11 @@ class MockCareService extends CareService {
       if (!fromLast.isBefore(now)) return fromLast;
     }
     final start = DateTime(now.year, now.month, now.day);
+    if (last == null &&
+        (entry.frequency != CareFrequency.setDays ||
+            entry.weekdays.contains(start.weekday))) {
+      return DateTime(start.year, start.month, start.day, hour);
+    }
     if (entry.frequency == CareFrequency.setDays && entry.weekdays.isNotEmpty) {
       for (var offset = 0; offset < 8; offset++) {
         final day = start.add(Duration(days: offset));

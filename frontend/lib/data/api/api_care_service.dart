@@ -14,12 +14,14 @@ class ApiCareService extends CareService {
   List<CareSchedule>? _schedulesCache;
   CareTask? _upcoming;
   var _upcomingReady = false;
+  var _epoch = 0;
 
   String _dayKey(DateTime day) {
     return '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
   }
 
   void _forget() {
+    _epoch += 1;
     _tasks.clear();
     _history = null;
     _schedulesCache = null;
@@ -31,19 +33,25 @@ class ApiCareService extends CareService {
   Future<List<CareTask>> tasksFor(DateTime day) async {
     final date = _dayKey(day);
     final cached = _tasks[date];
-    if (cached != null) return cached;
+    if (cached != null) return List.of(cached);
+    final epoch = _epoch;
     final data = await _client.send('GET', '/api/tasks', query: {'date': date});
     final tasks = (data as List)
         .map((item) => CareTask.fromJson(Map<String, dynamic>.from(item as Map)))
         .toList();
+    if (epoch != _epoch) {
+      return _tasks[date] ?? tasksFor(day);
+    }
     _tasks[date] = tasks;
-    return tasks;
+    return List.of(tasks);
   }
 
   @override
   Future<CareTask?> upcomingAfter(DateTime today) async {
     if (_upcomingReady) return _upcoming;
+    final epoch = _epoch;
     final data = await _client.send('GET', '/api/tasks', query: {'upcoming': '1'});
+    if (epoch != _epoch) return upcomingAfter(today);
     final tasks = (data as List)
         .map((item) => CareTask.fromJson(Map<String, dynamic>.from(item as Map)))
         .toList();

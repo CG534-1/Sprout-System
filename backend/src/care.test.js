@@ -15,11 +15,26 @@ test('next care later today stays on today', () => {
 test('a missed morning slot moves to the next interval', () => {
   const now = new Date('2026-09-30T10:00:00.000Z');
   const due = nextDue(
-    { frequency: 'daily', reminders: ['morning'], weekdays: [] },
+    {
+      frequency: 'daily',
+      reminders: ['morning'],
+      weekdays: [],
+      lastDone: '2026-09-30T09:00:00.000Z',
+    },
     0,
     now,
   );
   assert.equal(due, '2026-10-01T09:00:00.000Z');
+});
+
+test('a new plan still starts today after the reminder hour', () => {
+  const now = new Date('2026-09-30T22:00:00.000Z');
+  const due = nextDue(
+    { frequency: 'daily', reminders: ['morning'], weekdays: [] },
+    0,
+    now,
+  );
+  assert.equal(due, '2026-09-30T09:00:00.000Z');
 });
 
 test('last care counts forward, then the next slot if that time has passed', () => {

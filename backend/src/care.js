@@ -94,6 +94,9 @@ export function nextDue(entry, offsetMinutes, now = new Date()) {
     const fromLast = afterLast(last, entry, hour, interval);
     const instant = asInstant(fromLast);
     if (instant.getTime() >= now.getTime()) return instant.toISOString();
+  } else if (entry.frequency !== 'setDays' || entry.weekdays?.includes(current.weekday)) {
+    // A new plan starts today so Home is not blank after an evening add.
+    return wallToUtc(current.year, current.month, current.day, hour, offsetMinutes).toISOString();
   }
 
   if (entry.frequency === 'setDays' && entry.weekdays?.length) {
