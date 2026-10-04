@@ -32,6 +32,15 @@ export function wallParts(date) {
   };
 }
 
+export function upcomingOnNextDay(rows, todayKey, offsetMinutes) {
+  const future = (rows ?? [])
+    .filter((row) => row.status === 'due' && localDayKey(row.due_at, offsetMinutes) > todayKey)
+    .sort((a, b) => new Date(a.due_at) - new Date(b.due_at));
+  if (!future.length) return [];
+  const nextDay = localDayKey(future[0].due_at, offsetMinutes);
+  return future.filter((row) => localDayKey(row.due_at, offsetMinutes) === nextDay);
+}
+
 export function localDayKey(instant, offsetMinutes) {
   const wall = wallNow(offsetMinutes, new Date(instant));
   const parts = wallParts(wall);

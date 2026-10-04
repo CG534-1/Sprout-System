@@ -24,7 +24,10 @@ class AppServices {
     required this.pets,
     required this.care,
     required this.profile,
-  });
+  }) {
+    _homeUserId = auth.currentUser?.id;
+    auth.addListener(_syncHomeCache);
+  }
 
   factory AppServices.mock({
     Duration delay = const Duration(milliseconds: 300),
@@ -49,11 +52,12 @@ class AppServices {
       token: () async => supabase.auth.currentSession?.accessToken,
     );
     final auth = ApiAuthService(supabase, client);
+    final care = ApiCareService(client);
     return AppServices(
       auth: auth,
-      plants: ApiPlantService(supabase, client),
-      pets: ApiPetService(supabase, client),
-      care: ApiCareService(client),
+      plants: ApiPlantService(supabase, client, onSubjectsChanged: care.dropCache),
+      pets: ApiPetService(supabase, client, onSubjectsChanged: care.dropCache),
+      care: care,
       profile: ApiProfileService(client),
     );
   }
@@ -63,8 +67,19 @@ class AppServices {
   final PetService pets;
   final CareService care;
   final ProfileService profile;
+  String? _homeUserId;
+
+  void _syncHomeCache() {
+    final id = auth.currentUser?.id;
+    if (id == _homeUserId) return;
+    _homeUserId = id;
+    plants.dropCache();
+    pets.dropCache();
+    care.dropCache();
+  }
 
   void dispose() {
+    auth.removeListener(_syncHomeCache);
     auth.dispose();
     plants.dispose();
     pets.dispose();

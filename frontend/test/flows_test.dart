@@ -9,6 +9,8 @@ import 'package:sprout/data/mock/mock_pet_service.dart';
 import 'package:sprout/data/mock/mock_plant_service.dart';
 import 'package:sprout/data/mock/mock_profile_service.dart';
 import 'package:sprout/data/mock/mock_store.dart';
+import 'package:sprout/data/models/care_enums.dart';
+import 'package:sprout/data/models/care_task.dart';
 import 'package:sprout/features/auth/auth_widgets.dart';
 import 'package:sprout/features/auth/otp_page.dart';
 import 'package:sprout/features/auth/sign_up_page.dart';
@@ -69,6 +71,163 @@ void main() {
     expect(find.text('Your home is empty'), findsNothing);
     expect(find.text('Nothing due today'), findsOneWidget);
     expect(find.text('Coming up'), findsOneWidget);
+  });
+
+  testWidgets('an empty home does not keep leftover today tasks', (tester) async {
+    final store = MockStore.seeded(delay: Duration.zero);
+    store.plants.clear();
+    store.pets.clear();
+    final auth = MockAuthService(store);
+    auth.markSplashSeen();
+    auth.completeOnboarding();
+    await auth.signIn(email: 'ama@sprout.app', password: 'secret1');
+    final services = AppServices(
+      auth: auth,
+      plants: MockPlantService(store),
+      pets: MockPetService(store),
+      care: MockCareService(store),
+      profile: MockProfileService(store, auth),
+    );
+    await tester.pumpWidget(SproutApp(services: services));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Your home is empty'), findsOneWidget);
+    expect(find.text('Water Monstera'), findsNothing);
+    expect(find.text('Feed Milo'), findsNothing);
+    expect(find.text('Coming up'), findsNothing);
+  });
+
+  testWidgets('coming up lists every event on the next day that has care', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final store = MockStore.seeded(delay: Duration.zero);
+    final now = DateTime.now();
+    final later = DateTime(now.year, now.month, now.day + 2, 9);
+    store.tasks.add(
+      CareTask(
+        id: 'task-groom-milo-tomorrow',
+        scheduleId: 'schedule-walk-milo',
+        subjectId: 'pet-milo',
+        subjectType: CareSubjectType.pet,
+        subjectName: 'Milo',
+        action: CareAction.groom,
+        dueAt: DateTime(now.year, now.month, now.day + 1, 19),
+        status: TaskStatus.due,
+      ),
+    );
+    store.tasks.add(
+      CareTask(
+        id: 'task-water-later',
+        scheduleId: 'schedule-water-monstera',
+        subjectId: 'plant-monstera',
+        subjectType: CareSubjectType.plant,
+        subjectName: 'Monstera',
+        action: CareAction.water,
+        dueAt: later,
+        status: TaskStatus.due,
+      ),
+    );
+    final auth = MockAuthService(store);
+    auth.markSplashSeen();
+    auth.completeOnboarding();
+    await auth.signIn(email: 'ama@sprout.app', password: 'secret1');
+    final services = AppServices(
+      auth: auth,
+      plants: MockPlantService(store),
+      pets: MockPetService(store),
+      care: MockCareService(store),
+      profile: MockProfileService(store, auth),
+    );
+    await tester.pumpWidget(SproutApp(services: services));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('Water Aloe Vera'), 200);
+    await tester.scrollUntilVisible(find.text('Groom Milo'), 200);
+    expect(find.text('Water Aloe Vera'), findsOneWidget);
+    expect(find.text('Groom Milo'), findsOneWidget);
+    expect(find.text('In 2 days'), findsNothing);
+  });
+
+  testWidgets('an overdue task can be skipped', (tester) async {
+    final store = MockStore.seeded(delay: Duration.zero);
+    store.plants.clear();
+    store.pets.removeWhere((pet) => pet.id != 'pet-milo');
+    store.tasks
+      ..clear()
+      ..add(
+        CareTask(
+          id: 'task-walk-milo',
+          scheduleId: 'schedule-walk-milo',
+          subjectId: 'pet-milo',
+          subjectType: CareSubjectType.pet,
+          subjectName: 'Milo',
+          action: CareAction.walk,
+          dueAt: DateTime.now().subtract(const Duration(hours: 6)),
+          status: TaskStatus.due,
+        ),
+      );
+    final auth = MockAuthService(store);
+    auth.markSplashSeen();
+    auth.completeOnboarding();
+    await auth.signIn(email: 'ama@sprout.app', password: 'secret1');
+    final services = AppServices(
+      auth: auth,
+      plants: MockPlantService(store),
+      pets: MockPetService(store),
+      care: MockCareService(store),
+      profile: MockProfileService(store, auth),
+    );
+    await tester.pumpWidget(SproutApp(services: services));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Overdue'), findsOneWidget);
+    expect(find.text('Skip'), findsOneWidget);
+    expect(
+      find.text('One is past its time. Mark it done, or skip it.'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('skip-task-walk-milo')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Skipped'), findsOneWidget);
+    expect(find.text('All caught up! 🌿'), findsOneWidget);
+  });
+
+  testWidgets('removing everyone shows the empty home without leftover care', (
+    tester,
+  ) async {
+    final store = MockStore.seeded(delay: Duration.zero);
+    final auth = MockAuthService(store);
+    auth.markSplashSeen();
+    auth.completeOnboarding();
+    await auth.signIn(email: 'ama@sprout.app', password: 'secret1');
+    final services = AppServices(
+      auth: auth,
+      plants: MockPlantService(store),
+      pets: MockPetService(store),
+      care: MockCareService(store),
+      profile: MockProfileService(store, auth),
+    );
+    await tester.pumpWidget(SproutApp(services: services));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Feed Milo'), findsOneWidget);
+
+    await services.plants.deletePlant('plant-monstera');
+    await services.plants.deletePlant('plant-aloe');
+    await services.pets.deletePet('pet-milo');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Your home is empty'), findsOneWidget);
+    expect(find.text('Feed Milo'), findsNothing);
+    expect(find.text('Water Monstera'), findsNothing);
+    expect(find.text('Coming up'), findsNothing);
   });
 
   testWidgets('a new password sends you back to sign in instead of home', (

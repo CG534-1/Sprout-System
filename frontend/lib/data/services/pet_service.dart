@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:sprout/data/models/pet.dart';
 
 abstract class PetService extends ChangeNotifier {
+  void dropCache() {}
+
   Future<List<Pet>> listPets();
 
   Future<Pet> getPet(String id);

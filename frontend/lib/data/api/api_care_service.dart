@@ -12,7 +12,7 @@ class ApiCareService extends CareService {
   final _tasks = <String, List<CareTask>>{};
   List<CareHistoryEntry>? _history;
   List<CareSchedule>? _schedulesCache;
-  CareTask? _upcoming;
+  List<CareTask> _upcoming = [];
   var _upcomingReady = false;
   var _epoch = 0;
 
@@ -25,8 +25,14 @@ class ApiCareService extends CareService {
     _tasks.clear();
     _history = null;
     _schedulesCache = null;
-    _upcoming = null;
+    _upcoming = [];
     _upcomingReady = false;
+  }
+
+  @override
+  void dropCache() {
+    _forget();
+    notifyListeners();
   }
 
   @override
@@ -47,17 +53,16 @@ class ApiCareService extends CareService {
   }
 
   @override
-  Future<CareTask?> upcomingAfter(DateTime today) async {
-    if (_upcomingReady) return _upcoming;
+  Future<List<CareTask>> upcomingAfter(DateTime today) async {
+    if (_upcomingReady) return List.of(_upcoming);
     final epoch = _epoch;
     final data = await _client.send('GET', '/api/tasks', query: {'upcoming': '1'});
     if (epoch != _epoch) return upcomingAfter(today);
-    final tasks = (data as List)
+    _upcoming = (data as List)
         .map((item) => CareTask.fromJson(Map<String, dynamic>.from(item as Map)))
         .toList();
-    _upcoming = tasks.isEmpty ? null : tasks.first;
     _upcomingReady = true;
-    return _upcoming;
+    return List.of(_upcoming);
   }
 
   void _setStatus(String taskId, TaskStatus status) {
@@ -76,6 +81,19 @@ class ApiCareService extends CareService {
     notifyListeners();
     try {
       await _client.send('POST', '/api/tasks/$taskId/complete');
+    } catch (_) {
+      _setStatus(taskId, TaskStatus.due);
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> skipTask(String taskId) async {
+    _setStatus(taskId, TaskStatus.skipped);
+    notifyListeners();
+    try {
+      await _client.send('POST', '/api/tasks/$taskId/skip');
     } catch (_) {
       _setStatus(taskId, TaskStatus.due);
       notifyListeners();

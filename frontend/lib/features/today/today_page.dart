@@ -33,12 +33,13 @@ class TodayPage extends StatefulWidget {
 
 class _TodayPageState extends State<TodayPage> {
   List<CareTask> _today = [];
-  CareTask? _upcoming;
+  List<CareTask> _upcoming = [];
   Map<String, String> _photos = {};
   var _loading = true;
   var _hasHome = false;
   var _loadGen = 0;
   var _unread = 0;
+  AuthService? _auth;
   CareService? _care;
   PlantService? _plants;
   PetService? _pets;
@@ -48,6 +49,7 @@ class _TodayPageState extends State<TodayPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      _auth = context.read<AuthService>()..addListener(_refresh);
       _care = context.read<CareService>()..addListener(_refresh);
       _plants = context.read<PlantService>()..addListener(_refresh);
       _pets = context.read<PetService>()..addListener(_refresh);
@@ -57,6 +59,7 @@ class _TodayPageState extends State<TodayPage> {
 
   @override
   void dispose() {
+    _auth?.removeListener(_refresh);
     _care?.removeListener(_refresh);
     _plants?.removeListener(_refresh);
     _pets?.removeListener(_refresh);
@@ -77,7 +80,7 @@ class _TodayPageState extends State<TodayPage> {
     List<CareTask> tasks;
     List<Plant> plantList;
     List<Pet> petList;
-    CareTask? upcoming;
+    List<CareTask> upcoming;
     try {
       final loaded = await (
         care.tasksFor(today),
@@ -109,15 +112,31 @@ class _TodayPageState extends State<TodayPage> {
       final url = pet.photoUrl;
       if (url != null) photos[pet.id] = url;
     }
+    final homeIds = {
+      for (final plant in plantList) plant.id,
+      for (final pet in petList) pet.id,
+    };
     setState(() {
-      _today = List<CareTask>.of(tasks)
-        ..sort((a, b) => a.dueAt.compareTo(b.dueAt));
+      _today = tasks.where((task) => homeIds.contains(task.subjectId)).toList()
+        ..sort((a, b) {
+          final byOpen = _openRank(a).compareTo(_openRank(b));
+          if (byOpen != 0) return byOpen;
+          return a.dueAt.compareTo(b.dueAt);
+        });
       _photos = photos;
-      _upcoming = upcoming;
-      _hasHome = plantList.isNotEmpty || petList.isNotEmpty;
+      _upcoming = upcoming
+          .where((task) => homeIds.contains(task.subjectId))
+          .toList();
+      _hasHome = homeIds.isNotEmpty;
       _loading = false;
     });
     if (notes) await _loadNotes();
+  }
+
+  int _openRank(CareTask task) {
+    if (task.isOverdue()) return 0;
+    if (task.status == TaskStatus.due) return 1;
+    return 2;
   }
 
   Future<void> _loadNotes() async {
@@ -163,12 +182,45 @@ class _TodayPageState extends State<TodayPage> {
     }
   }
 
+  Future<void> _skip(CareTask task) async {
+    setState(() {
+      _today = [
+        for (final item in _today)
+          if (item.id == task.id)
+            item.copyWith(
+              status: item.status == TaskStatus.skipped
+                  ? TaskStatus.due
+                  : TaskStatus.skipped,
+            )
+          else
+            item,
+      ];
+    });
+    final care = context.read<CareService>();
+    final toast = sproutToaster(context);
+    try {
+      if (task.status == TaskStatus.skipped) {
+        await care.reopenTask(task.id);
+      } else {
+        await care.skipTask(task.id);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      toast.show(
+        'That did not save. Check your connection and tap again.',
+        error: true,
+      );
+      await _load(notes: false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthService>().currentUser;
     final name = user?.name ?? 'there';
     final first = name.trim().split(RegExp(r'\s+')).first;
-    final done = _today.where((task) => task.status == TaskStatus.done).length;
+    final done = _today.where((task) => task.closed).length;
+    final overdue = _today.where((task) => task.isOverdue()).length;
     final caughtUp = _today.isNotEmpty && done == _today.length;
     final noHome = !_loading && !_hasHome;
     final idle = !_loading && _hasHome && _today.isEmpty;
@@ -194,6 +246,7 @@ class _TodayPageState extends State<TodayPage> {
                   caughtUp: caughtUp,
                   quiet: noHome,
                   idle: idle,
+                  overdue: overdue,
                 ),
                 const SizedBox(height: 26),
                 _SectionTitle(
@@ -216,16 +269,18 @@ class _TodayPageState extends State<TodayPage> {
                     icon: Icons.event_available_outlined,
                     title: 'Nothing due today',
                     body: 'Their next care is further down the week.',
-                  ),
-                for (final task in _today) ...[
-                  _TaskCard(
-                    task: task,
-                    photo: _photos[task.subjectId],
-                    onComplete: () => _toggle(task),
-                  ),
-                  const SizedBox(height: 9),
-                ],
-                if (caughtUp) ...[
+                  )
+                else
+                  for (final task in _today) ...[
+                    _TaskCard(
+                      task: task,
+                      photo: _photos[task.subjectId],
+                      onComplete: () => _toggle(task),
+                      onSkip: () => _skip(task),
+                    ),
+                    const SizedBox(height: 9),
+                  ],
+                if (caughtUp && !noHome) ...[
                   const SizedBox(height: 1),
                   const _CaughtUpNote(),
                 ],
@@ -236,13 +291,16 @@ class _TodayPageState extends State<TodayPage> {
                     trailing: _CalendarLink(),
                   ),
                   const SizedBox(height: 12),
-                  if (_upcoming != null)
-                    _UpcomingCard(
-                      task: _upcoming!,
-                      photo: _photos[_upcoming!.subjectId],
-                    )
+                  if (_upcoming.isEmpty)
+                    const _QuietLine('Nothing else this week.')
                   else
-                    const _QuietLine('Nothing else this week.'),
+                    for (final task in _upcoming) ...[
+                      _UpcomingCard(
+                        task: task,
+                        photo: _photos[task.subjectId],
+                      ),
+                      const SizedBox(height: 9),
+                    ],
                 ],
               ],
             ),
@@ -430,12 +488,14 @@ class _Hero extends StatelessWidget {
     required this.caughtUp,
     required this.quiet,
     this.idle = false,
+    this.overdue = 0,
   });
 
   final int count;
   final bool caughtUp;
   final bool quiet;
   final bool idle;
+  final int overdue;
 
   @override
   Widget build(BuildContext context) {
@@ -452,6 +512,10 @@ class _Hero extends StatelessWidget {
         ? 'Nothing is due until someone joins your home.'
         : idle
         ? 'Nothing is due today. Check Coming up for the next visit.'
+        : overdue > 0
+        ? overdue == 1
+            ? 'One is past its time. Mark it done, or skip it.'
+            : '$overdue are past their time. Mark them done, or skip.'
         : 'A little attention goes a long way.';
     return Container(
       height: caughtUp ? 123 : 120,
@@ -593,23 +657,36 @@ class _TaskCard extends StatelessWidget {
     required this.task,
     required this.photo,
     required this.onComplete,
+    required this.onSkip,
   });
 
   final CareTask task;
   final String? photo;
   final VoidCallback onComplete;
+  final VoidCallback onSkip;
 
   @override
   Widget build(BuildContext context) {
     final done = task.status == TaskStatus.done;
+    final skipped = task.status == TaskStatus.skipped;
+    final overdue = task.isOverdue();
+    final when = DateFormat('h:mm a').format(task.dueAt);
+    final meta = skipped
+        ? 'Skipped · $when'
+        : overdue
+        ? 'Overdue · $when'
+        : '${task.subjectType.label} · $when';
     return Opacity(
-      opacity: done ? 0.54 : 1,
+      opacity: done || skipped ? 0.54 : 1,
       child: Container(
         padding: const EdgeInsets.all(9),
         decoration: BoxDecoration(
           color: AppColors.onboardingPaper,
           borderRadius: BorderRadius.circular(17),
-          border: Border.all(color: AppColors.dotIdle, width: 0.8),
+          border: Border.all(
+            color: overdue ? AppColors.error.withValues(alpha: 0.35) : AppColors.dotIdle,
+            width: 0.8,
+          ),
         ),
         child: Row(
           children: [
@@ -620,10 +697,10 @@ class _TaskCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${task.subjectType.label} · ${DateFormat('h:mm a').format(task.dueAt)}',
+                    meta,
                     style: GoogleFonts.dmMono(
                       fontSize: 10,
-                      color: AppColors.onboardingBody,
+                      color: overdue ? AppColors.error : AppColors.onboardingBody,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -650,6 +727,27 @@ class _TaskCard extends StatelessWidget {
                 ],
               ),
             ),
+            if (overdue || skipped) ...[
+              TextButton(
+                key: Key('skip-${task.id}'),
+                onPressed: onSkip,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  foregroundColor: AppColors.onboardingBody,
+                ),
+                child: Text(
+                  skipped ? 'Undo' : 'Skip',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.onboardingBody,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+            ],
             _Check(done: done, onPressed: onComplete, id: task.id),
           ],
         ),

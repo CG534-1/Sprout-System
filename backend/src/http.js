@@ -1,9 +1,9 @@
 import cors from 'cors';
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
-import { localDayKey, utcOffsetMinutes, duesOnCycle } from './care.js';
+import { localDayKey, utcOffsetMinutes, duesOnCycle, upcomingOnNextDay } from './care.js';
 import { dispatchReminders } from './dispatch.js';
-import { signupEmailTaken } from './signup.js';
+import { lookupSignupEmail } from './signup.js';
 
 const bucket = 'care-media';
 
@@ -29,23 +29,7 @@ export function createApp() {
         return;
       }
       const admin = service();
-      let user = null;
-      try {
-        const { data, error } = await admin.auth.admin.getUserByEmail(email);
-        if (!error) user = data?.user ?? null;
-      } catch {
-        user = null;
-      }
-      if (!user) {
-        res.json({ ok: true });
-        return;
-      }
-      const { data: profile } = await admin
-        .from('profiles')
-        .select('id')
-        .eq('id', user.id)
-        .maybeSingle();
-      if (signupEmailTaken(user, profile)) {
+      if (await lookupSignupEmail(admin, email)) {
         res.status(409).json({
           message: 'That email already has an account. Sign in instead.',
         });
@@ -462,10 +446,7 @@ export function createApp() {
       const { data, error } = await req.db.from('care_tasks').select('*');
       if (error) throw error;
       if (req.query.upcoming === '1') {
-        const next = (data ?? [])
-          .filter((row) => row.status === 'due' && localDayKey(row.due_at, offset) > date)
-          .sort((a, b) => new Date(a.due_at) - new Date(b.due_at))[0];
-        res.json(next ? [taskJson(next)] : []);
+        res.json(upcomingOnNextDay(data ?? [], date, offset).map(taskJson));
         return;
       }
       const tasks = data
@@ -506,10 +487,23 @@ export function createApp() {
     }
   });
 
+  app.post('/api/tasks/:id/skip', async (req, res, next) => {
+    try {
+      const task = await one(req.db, 'care_tasks', req.params.id, 'This task could not be found.');
+      if (task.status === 'due') {
+        const { error } = await req.db.from('care_tasks').update({ status: 'skipped' }).eq('id', task.id);
+        if (error) throw error;
+      }
+      res.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post('/api/tasks/:id/reopen', async (req, res, next) => {
     try {
       const task = await one(req.db, 'care_tasks', req.params.id, 'This task could not be found.');
-      if (task.status === 'done') {
+      if (task.status === 'done' || task.status === 'skipped') {
         const { error } = await req.db.from('care_tasks').update({ status: 'due' }).eq('id', task.id);
         if (error) throw error;
         const { error: historyError } = await req.db.from('care_history').delete().eq('task_id', task.id);

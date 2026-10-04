@@ -1,5 +1,4 @@
-import 'dart:typed_data';
-
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/data/api/api_client.dart';
@@ -7,11 +6,18 @@ import 'package:sprout/data/models/pet.dart';
 import 'package:sprout/data/services/pet_service.dart';
 
 class ApiPetService extends PetService {
-  ApiPetService(this._supabase, this._client);
+  ApiPetService(this._supabase, this._client, {this.onSubjectsChanged});
 
   final SupabaseClient _supabase;
   final ApiClient _client;
+  final VoidCallback? onSubjectsChanged;
   List<Pet>? _pets;
+
+  @override
+  void dropCache() {
+    _pets = null;
+    notifyListeners();
+  }
 
   @override
   Future<List<Pet>> listPets() async {
@@ -79,6 +85,7 @@ class ApiPetService extends PetService {
   Future<void> deletePet(String id) async {
     await _client.send('DELETE', '/api/pets/$id');
     _pets = null;
+    onSubjectsChanged?.call();
     notifyListeners();
   }
 

@@ -27,17 +27,17 @@ class MockCareService extends CareService {
   }
 
   @override
-  Future<CareTask?> upcomingAfter(DateTime today) async {
+  Future<List<CareTask>> upcomingAfter(DateTime today) async {
     await _store.pause();
     for (var offset = 1; offset <= 7; offset++) {
       final day = today.add(Duration(days: offset));
       final open = _store.tasks
-          .where((task) => isSameDay(task.dueAt, day) && task.status != TaskStatus.done)
+          .where((task) => isSameDay(task.dueAt, day) && task.status == TaskStatus.due)
           .toList()
         ..sort((a, b) => a.dueAt.compareTo(b.dueAt));
-      if (open.isNotEmpty) return open.first;
+      if (open.isNotEmpty) return open;
     }
-    return null;
+    return [];
   }
 
   @override
@@ -63,12 +63,25 @@ class MockCareService extends CareService {
   }
 
   @override
+  Future<void> skipTask(String taskId) async {
+    await _store.pause();
+    final index = _store.tasks.indexWhere((task) => task.id == taskId);
+    if (index == -1) throw const AppException('This task could not be found.');
+    final task = _store.tasks[index];
+    if (task.status != TaskStatus.due) return;
+    _store.tasks[index] = task.copyWith(status: TaskStatus.skipped);
+    notifyListeners();
+  }
+
+  @override
   Future<void> reopenTask(String taskId) async {
     await _store.pause();
     final index = _store.tasks.indexWhere((task) => task.id == taskId);
     if (index == -1) throw const AppException('This task could not be found.');
     final task = _store.tasks[index];
-    if (task.status != TaskStatus.done) return;
+    if (task.status != TaskStatus.done && task.status != TaskStatus.skipped) {
+      return;
+    }
     _store.tasks[index] = task.copyWith(status: TaskStatus.due);
     final historyIndex = _store.history.indexWhere(
       (entry) => entry.taskId == taskId,

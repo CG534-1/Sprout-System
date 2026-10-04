@@ -21,6 +21,14 @@ class CareTask {
   final DateTime dueAt;
   final TaskStatus status;
 
+  bool get closed =>
+      status == TaskStatus.done || status == TaskStatus.skipped;
+
+  bool isOverdue([DateTime? now]) {
+    if (status != TaskStatus.due) return false;
+    return dueAt.isBefore(now ?? DateTime.now());
+  }
+
   CareTask copyWith({TaskStatus? status}) {
     return CareTask(
       id: id,

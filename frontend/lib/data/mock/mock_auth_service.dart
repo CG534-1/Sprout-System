@@ -65,7 +65,6 @@ class MockAuthService extends AuthService {
   @override
   Future<void> confirmEmailCode({required String email, required String code}) async {
     await _store.pause();
-    _rejectTakenEmail(email);
     _requireCode(email, code);
   }
 

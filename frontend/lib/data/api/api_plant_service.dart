@@ -1,5 +1,4 @@
-import 'dart:typed_data';
-
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/data/api/api_client.dart';
@@ -7,11 +6,18 @@ import 'package:sprout/data/models/plant.dart';
 import 'package:sprout/data/services/plant_service.dart';
 
 class ApiPlantService extends PlantService {
-  ApiPlantService(this._supabase, this._client);
+  ApiPlantService(this._supabase, this._client, {this.onSubjectsChanged});
 
   final SupabaseClient _supabase;
   final ApiClient _client;
+  final VoidCallback? onSubjectsChanged;
   List<Plant>? _plants;
+
+  @override
+  void dropCache() {
+    _plants = null;
+    notifyListeners();
+  }
 
   @override
   Future<List<Plant>> listPlants() async {
@@ -77,6 +83,7 @@ class ApiPlantService extends PlantService {
   Future<void> deletePlant(String id) async {
     await _client.send('DELETE', '/api/plants/$id');
     _plants = null;
+    onSubjectsChanged?.call();
     notifyListeners();
   }
 

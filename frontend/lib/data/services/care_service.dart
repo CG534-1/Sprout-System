@@ -7,9 +7,13 @@ import 'package:sprout/data/models/care_task.dart';
 abstract class CareService extends ChangeNotifier {
   Future<List<CareTask>> tasksFor(DateTime day);
 
-  Future<CareTask?> upcomingAfter(DateTime today);
+  Future<List<CareTask>> upcomingAfter(DateTime today);
+
+  void dropCache() {}
 
   Future<void> completeTask(String taskId);
+
+  Future<void> skipTask(String taskId);
 
   Future<void> reopenTask(String taskId);
 
