@@ -9,6 +9,7 @@ import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/theme/theme_controller.dart';
 import 'package:sprout/data/models/care_enums.dart';
+import 'package:sprout/data/models/slot_hours.dart';
 import 'package:sprout/data/models/user_profile.dart';
 import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/care/care_sheet.dart';
@@ -120,22 +121,44 @@ class _NotificationsSheetState extends State<NotificationsSheet> {
 class PreferencesSheet extends StatefulWidget {
   const PreferencesSheet({
     super.key,
-    required this.preferred,
+    required this.preferredSlots,
     required this.lead,
+    required this.slotHours,
     required this.onChanged,
   });
 
-  final CareSlot preferred;
+  final Set<CareSlot> preferredSlots;
   final String lead;
-  final void Function(CareSlot slot, String lead) onChanged;
+  final SlotHours slotHours;
+  final void Function(Set<CareSlot> slots, String lead, SlotHours hours) onChanged;
 
   @override
   State<PreferencesSheet> createState() => _PreferencesSheetState();
 }
 
 class _PreferencesSheetState extends State<PreferencesSheet> {
-  late CareSlot _slot = widget.preferred;
+  late final Set<CareSlot> _slots = {...widget.preferredSlots};
   late String _lead = widget.lead;
+  late SlotHours _hours = widget.slotHours;
+
+  void _emit() => widget.onChanged({..._slots}, _lead, _hours);
+
+  void _toggle(CareSlot slot) {
+    setState(() {
+      if (!_slots.add(slot) && _slots.length > 1) _slots.remove(slot);
+    });
+    _emit();
+  }
+
+  Future<void> _pickClock(CareSlot slot) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _hours.of(slot),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _hours = _hours.copyWithSlot(slot, picked));
+    _emit();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -174,26 +197,13 @@ class _PreferencesSheetState extends State<PreferencesSheet> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    for (final slot in CareSlot.values) ...[
-                      if (slot != CareSlot.morning) const SizedBox(width: 8),
-                      Expanded(
-                        child: _TimeCard(
-                          emoji: slot.mark,
-                          title: slot.label,
-                          clock: slot.clock,
-                          selected: _slot == slot,
-                          onTap: () {
-                            setState(() => _slot = slot);
-                            widget.onChanged(_slot, _lead);
-                          },
-                        ),
-                      ),
-                    ],
-                  ],
+                CareSlots(
+                  selected: _slots,
+                  clocks: _hours,
+                  onToggle: _toggle,
+                  onCustom: _pickClock,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
                 Text(
                   'REMIND ME HOW FAR IN ADVANCE?',
                   style: GoogleFonts.dmMono(
@@ -218,10 +228,16 @@ class _PreferencesSheetState extends State<PreferencesSheet> {
                         selected: _lead == lead,
                         onTap: () {
                           setState(() => _lead = lead);
-                          widget.onChanged(_slot, _lead);
+                          _emit();
                         },
                       ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                Center(
+                  child: CareCancelButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
                 ),
               ],
             ),
@@ -806,61 +822,6 @@ class _ToggleRow extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _TimeCard extends StatelessWidget {
-  const _TimeCard({
-    required this.emoji,
-    required this.title,
-    required this.clock,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String emoji;
-  final String title;
-  final String clock;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: selected ? careField : AppColors.onboardingPaper,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected ? AppColors.sproutGreen : AppColors.dotIdle,
-            width: selected ? 1.4 : 0.8,
-          ),
-        ),
-        child: Column(
-          children: [
-            Text(emoji, style: const TextStyle(fontSize: 22)),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: GoogleFonts.dmSans(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.ink,
-              ),
-            ),
-            Text(
-              clock,
-              style: GoogleFonts.dmSans(
-                fontSize: 11,
-                color: AppColors.onboardingBody,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

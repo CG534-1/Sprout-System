@@ -1,4 +1,5 @@
 import 'package:sprout/data/models/care_enums.dart';
+import 'package:sprout/data/models/slot_hours.dart';
 
 class CareSchedule {
   const CareSchedule({
@@ -14,6 +15,7 @@ class CareSchedule {
     this.weekdays = const [],
     this.lastDone,
     this.lead,
+    this.slotHours = const SlotHours({}),
   });
 
   final String id;
@@ -28,6 +30,7 @@ class CareSchedule {
   final List<int> weekdays;
   final DateTime? lastDone;
   final String? lead;
+  final SlotHours slotHours;
 
   String get whenLabel {
     if (frequency == CareFrequency.custom && everyDays != null) {
@@ -54,6 +57,7 @@ class CareSchedule {
       'weekdays': weekdays,
       'lastDone': lastDone?.toIso8601String(),
       'lead': lead,
+      'slotHours': slotHours.toJson(),
     };
   }
 
@@ -79,6 +83,7 @@ class CareSchedule {
           ? null
           : DateTime.parse(json['lastDone'] as String),
       lead: json['lead'] as String?,
+      slotHours: SlotHours.overridesFromJson(json['slotHours']),
     );
   }
 }
@@ -93,6 +98,7 @@ class CarePlanEntry {
     this.weekdays = const [],
     this.lastDone,
     this.lead,
+    this.slotHours = const SlotHours({}),
   });
 
   final CareAction action;
@@ -103,4 +109,5 @@ class CarePlanEntry {
   final List<int> weekdays;
   final DateTime? lastDone;
   final String? lead;
+  final SlotHours slotHours;
 }

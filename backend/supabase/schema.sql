@@ -27,6 +27,7 @@ create table if not exists public.user_settings (
 );
 
 alter table public.user_settings add column if not exists utc_offset_minutes integer not null default 0;
+alter table public.user_settings add column if not exists slot_hours jsonb not null default '{}'::jsonb;
 
 create table if not exists public.plants (
   id uuid primary key default gen_random_uuid(),
@@ -63,8 +64,11 @@ create table if not exists public.care_schedules (
   every_days integer,
   weekdays integer[] not null default '{}',
   last_done timestamptz,
-  lead text
+  lead text,
+  slot_hours jsonb not null default '{}'::jsonb
 );
+
+alter table public.care_schedules add column if not exists slot_hours jsonb not null default '{}'::jsonb;
 
 create table if not exists public.care_tasks (
   id uuid primary key default gen_random_uuid(),

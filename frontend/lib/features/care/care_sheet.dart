@@ -6,6 +6,7 @@ import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/widgets/keyboard.dart';
 import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/data/models/care_enums.dart';
+import 'package:sprout/data/models/slot_hours.dart';
 
 const careRemove = Color(0xFFC0392B);
 
@@ -449,26 +450,70 @@ class CareChip extends StatelessWidget {
 }
 
 class CareSlots extends StatelessWidget {
-  const CareSlots({super.key, required this.selected, required this.onToggle});
+  const CareSlots({
+    super.key,
+    required this.selected,
+    required this.onToggle,
+    required this.clocks,
+    required this.onCustom,
+  });
 
   final Set<CareSlot> selected;
   final ValueChanged<CareSlot> onToggle;
+  final SlotHours clocks;
+  final ValueChanged<CareSlot> onCustom;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final slot in CareSlot.values) ...[
-          if (slot != CareSlot.morning) const SizedBox(width: 8),
-          Expanded(
-            child: _SlotCard(
-              slot: slot,
-              selected: selected.contains(slot),
-              onTap: () => onToggle(slot),
-            ),
+        Row(
+          children: [
+            for (final slot in CareSlot.values) ...[
+              if (slot != CareSlot.morning) const SizedBox(width: 8),
+              Expanded(
+                child: _SlotCard(
+                  slot: slot,
+                  clock: clocks.labelOf(slot),
+                  selected: selected.contains(slot),
+                  onTap: () => onToggle(slot),
+                  onDoubleTap: () => onCustom(slot),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Double-tap a card to set a custom time.',
+          style: GoogleFonts.dmSans(
+            fontSize: 12,
+            color: AppColors.onboardingBody,
           ),
-        ],
+        ),
       ],
+    );
+  }
+}
+
+class CareCancelButton extends StatelessWidget {
+  const CareCancelButton({super.key, required this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onPressed,
+      child: Text(
+        'Cancel',
+        style: GoogleFonts.dmSans(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: AppColors.onboardingBody,
+        ),
+      ),
     );
   }
 }
@@ -476,18 +521,23 @@ class CareSlots extends StatelessWidget {
 class _SlotCard extends StatelessWidget {
   const _SlotCard({
     required this.slot,
+    required this.clock,
     required this.selected,
     required this.onTap,
+    required this.onDoubleTap,
   });
 
   final CareSlot slot;
+  final String clock;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback onDoubleTap;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      onDoubleTap: onDoubleTap,
       child: Container(
         padding: const EdgeInsets.fromLTRB(6, 14, 6, 12),
         decoration: BoxDecoration(
@@ -517,7 +567,7 @@ class _SlotCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  slot.clock,
+                  clock,
                   style: GoogleFonts.dmSans(
                     fontSize: 11,
                     color: AppColors.onboardingBody,

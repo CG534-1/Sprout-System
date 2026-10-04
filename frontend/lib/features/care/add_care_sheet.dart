@@ -124,6 +124,9 @@ class _KindSheetState extends State<_KindSheet> {
                   enabled: true,
                   onPressed: _next,
                 ),
+                CareCancelButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
               ],
             ),
           ),
@@ -320,11 +323,16 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
                   22,
                   12 + MediaQuery.paddingOf(context).bottom,
                 ),
-                child: CareActionButton(
-                  label: 'Set up care schedule →',
-                  enabled: _named,
-                  top: 10,
-                  onPressed: _openSchedule,
+                child: Column(
+                  children: [
+                    CareActionButton(
+                      label: 'Set up care schedule →',
+                      enabled: _named,
+                      top: 10,
+                      onPressed: _openSchedule,
+                    ),
+                    CareCancelButton(onPressed: _leave),
+                  ],
                 ),
               ),
             ],

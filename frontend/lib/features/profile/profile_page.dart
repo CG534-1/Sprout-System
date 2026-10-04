@@ -6,6 +6,7 @@ import 'package:sprout/core/widgets/person_avatar.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/data/models/care_enums.dart';
 import 'package:sprout/data/models/care_settings.dart';
+import 'package:sprout/data/models/slot_hours.dart';
 import 'package:sprout/data/models/user_profile.dart';
 import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/data/services/care_service.dart';
@@ -33,8 +34,9 @@ class _ProfilePageState extends State<ProfilePage> {
   var _overdue = true;
   var _summary = true;
   var _tips = false;
-  CareSlot _preferred = CareSlot.morning;
+  final _preferredSlots = <CareSlot>{CareSlot.morning};
   var _lead = '30 min before';
+  var _slotHours = SlotHours.defaults;
 
   @override
   void initState() {
@@ -64,8 +66,11 @@ class _ProfilePageState extends State<ProfilePage> {
       _overdue = settings.overdue;
       _summary = settings.summary;
       _tips = settings.tips;
-      _preferred = settings.preferred;
+      _preferredSlots
+        ..clear()
+        ..addAll(settings.preferredSlots);
       _lead = settings.lead;
+      _slotHours = settings.slotHours;
     });
     if (settings.wantsPush) {
       await PushService.enable(profile);
@@ -91,8 +96,9 @@ class _ProfilePageState extends State<ProfilePage> {
         overdue: _overdue,
         summary: _summary,
         tips: _tips,
-        preferred: _preferred,
+        preferredSlots: _preferredSlots.toList(),
         lead: _lead,
+        slotHours: _slotHours,
       ),
     );
   }
@@ -212,12 +218,16 @@ class _ProfilePageState extends State<ProfilePage> {
                     },
                     onPreferences: () => _open(
                       PreferencesSheet(
-                        preferred: _preferred,
+                        preferredSlots: _preferredSlots,
                         lead: _lead,
-                        onChanged: (slot, lead) {
+                        slotHours: _slotHours,
+                        onChanged: (slots, lead, hours) {
                           setState(() {
-                            _preferred = slot;
+                            _preferredSlots
+                              ..clear()
+                              ..addAll(slots);
                             _lead = lead;
+                            _slotHours = hours;
                           });
                           _saveSettings();
                         },

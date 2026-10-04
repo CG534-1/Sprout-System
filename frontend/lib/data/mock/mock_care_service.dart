@@ -4,6 +4,7 @@ import 'package:sprout/data/models/care_enums.dart';
 import 'package:sprout/data/models/care_history_entry.dart';
 import 'package:sprout/data/models/care_schedule.dart';
 import 'package:sprout/data/models/care_task.dart';
+import 'package:sprout/data/models/slot_hours.dart';
 import 'package:sprout/data/services/care_service.dart';
 
 class MockCareService extends CareService {
@@ -138,12 +139,17 @@ class MockCareService extends CareService {
       weekdays: entry.weekdays,
       lastDone: entry.lastDone,
       lead: entry.lead,
+      slotHours: entry.slotHours,
     );
     _store.schedules.add(schedule);
-    final slots = [...entry.reminders]..sort((a, b) => a.hour.compareTo(b.hour));
+    final hours = SlotHours.defaults.merge(entry.slotHours);
+    final slots = [...entry.reminders]..sort((a, b) => hours.of(a).hour.compareTo(hours.of(b).hour));
     final chosen = slots.isEmpty ? <CareSlot>[CareSlot.morning] : slots;
     final times = chosen
-        .map((slot) => DateTime(due.year, due.month, due.day, slot.hour))
+        .map((slot) {
+          final clock = hours.of(slot);
+          return DateTime(due.year, due.month, due.day, clock.hour, clock.minute);
+        })
         .where((at) => !at.isBefore(now))
         .toList();
     final dues = times.isEmpty ? [due] : times;
@@ -166,53 +172,63 @@ class MockCareService extends CareService {
   }
 
   DateTime _nextDue(DateTime now, CarePlanEntry entry) {
-    final slots = [...entry.reminders]..sort((a, b) => a.hour.compareTo(b.hour));
-    final hour = slots.isEmpty ? 9 : slots.first.hour;
+    final hours = SlotHours.defaults.merge(entry.slotHours);
+    final slots = [...entry.reminders]
+      ..sort((a, b) => hours.of(a).hour.compareTo(hours.of(b).hour));
+    final clock = hours.of(slots.isEmpty ? CareSlot.morning : slots.first);
     final interval = entry.frequency == CareFrequency.custom
         ? (entry.everyDays ?? 1)
         : entry.frequency.intervalDays;
     final last = entry.lastDone;
     if (last != null) {
-      final fromLast = _afterLast(last, entry, hour, interval);
+      final fromLast = _afterLast(last, entry, clock.hour, clock.minute, interval);
       if (!fromLast.isBefore(now)) return fromLast;
     }
     final start = DateTime(now.year, now.month, now.day);
     if (last == null &&
         (entry.frequency != CareFrequency.setDays ||
             entry.weekdays.contains(start.weekday))) {
-      return DateTime(start.year, start.month, start.day, hour);
+      return DateTime(start.year, start.month, start.day, clock.hour, clock.minute);
     }
     if (entry.frequency == CareFrequency.setDays && entry.weekdays.isNotEmpty) {
       for (var offset = 0; offset < 8; offset++) {
         final day = start.add(Duration(days: offset));
         if (!entry.weekdays.contains(day.weekday)) continue;
         for (final slot in slots) {
-          final at = DateTime(day.year, day.month, day.day, slot.hour);
+          final atClock = hours.of(slot);
+          final at = DateTime(day.year, day.month, day.day, atClock.hour, atClock.minute);
           if (!at.isBefore(now)) return at;
         }
       }
     }
     for (final slot in slots) {
-      final at = DateTime(start.year, start.month, start.day, slot.hour);
+      final atClock = hours.of(slot);
+      final at = DateTime(start.year, start.month, start.day, atClock.hour, atClock.minute);
       if (!at.isBefore(now)) return at;
     }
-    return DateTime(start.year, start.month, start.day, hour).add(
+    return DateTime(start.year, start.month, start.day, clock.hour, clock.minute).add(
       Duration(days: interval),
     );
   }
 
-  DateTime _afterLast(DateTime last, CarePlanEntry entry, int hour, int interval) {
+  DateTime _afterLast(
+    DateTime last,
+    CarePlanEntry entry,
+    int hour,
+    int minute,
+    int interval,
+  ) {
     final day = DateTime(last.year, last.month, last.day);
     if (entry.frequency == CareFrequency.setDays && entry.weekdays.isNotEmpty) {
       for (var offset = 1; offset <= 7; offset++) {
         final next = day.add(Duration(days: offset));
         if (entry.weekdays.contains(next.weekday)) {
-          return DateTime(next.year, next.month, next.day, hour);
+          return DateTime(next.year, next.month, next.day, hour, minute);
         }
       }
     }
     final next = day.add(Duration(days: interval));
-    return DateTime(next.year, next.month, next.day, hour);
+    return DateTime(next.year, next.month, next.day, hour, minute);
   }
 
   int _rank(TaskStatus status) => status == TaskStatus.due ? 0 : 1;

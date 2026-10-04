@@ -1,7 +1,16 @@
 import cors from 'cors';
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
-import { localDayKey, utcOffsetMinutes, duesOnCycle, upcomingOnNextDay } from './care.js';
+import {
+  clocksEqual,
+  duesOnCycle,
+  localDayKey,
+  mergeSlotHours,
+  normalizeSlotHours,
+  overrideSlotHours,
+  upcomingOnNextDay,
+  utcOffsetMinutes,
+} from './care.js';
 import { dispatchReminders } from './dispatch.js';
 import { lookupSignupEmail } from './signup.js';
 
@@ -141,22 +150,29 @@ export function createApp() {
 
   app.put('/api/me/settings', async (req, res, next) => {
     try {
+      const offset = utcOffsetMinutes(req);
+      const { data: current } = await req.db
+        .from('user_settings')
+        .select('*')
+        .eq('user_id', req.user.id)
+        .maybeSingle();
+      const slotHours = normalizeSlotHours(req.body.slotHours ?? current?.slot_hours);
+      const clocksChanged = !clocksEqual(current?.slot_hours, slotHours);
       const patch = {
         user_id: req.user.id,
         reminders: Boolean(req.body.reminders),
         overdue: Boolean(req.body.overdue),
         summary: Boolean(req.body.summary),
         tips: Boolean(req.body.tips),
-        preferred_slot: req.body.preferred || 'morning',
+        preferred_slot: preferredSlotsFrom(req.body.preferredSlots ?? req.body.preferred).join(','),
         lead: req.body.lead || '30 min before',
-        utc_offset_minutes: utcOffsetMinutes(req),
+        slot_hours: slotHours,
+        utc_offset_minutes: offset,
       };
-      const { data, error } = await req.db
-        .from('user_settings')
-        .upsert(patch, { onConflict: 'user_id' })
-        .select('*')
-        .single();
-      if (error) throw error;
+      const data = await upsertSettings(req.db, patch);
+      if (clocksChanged) {
+        await rebuildOpenTasks(req.db, req.user.id, offset, slotHours);
+      }
       res.json(settingsJson(data));
     } catch (error) {
       next(error);
@@ -380,6 +396,12 @@ export function createApp() {
       if (!subjectId || !subjectName) throw httpError(400, 'A plant or pet is required.');
       const entries = Array.isArray(req.body.entries) ? req.body.entries : [];
       const offset = utcOffsetMinutes(req);
+      const { data: setting } = await req.db
+        .from('user_settings')
+        .select('*')
+        .eq('user_id', req.user.id)
+        .maybeSingle();
+      const accountHours = normalizeSlotHours(setting?.slot_hours);
       const { error: dropSchedules } = await req.db
         .from('care_schedules')
         .delete()
@@ -392,17 +414,17 @@ export function createApp() {
         .neq('status', 'done');
       if (dropTasks) throw dropTasks;
       for (const entry of entries) {
+        const overrides = overrideSlotHours(entry.slotHours);
         const plan = {
           frequency: entry.frequency,
           reminders: entry.reminders ?? [],
           everyDays: entry.everyDays,
           weekdays: entry.weekdays ?? [],
           lastDone: entry.lastDone,
+          slotHours: mergeSlotHours(accountHours, overrides),
         };
         const times = duesOnCycle(plan, offset);
-        const { data: schedule, error } = await req.db
-          .from('care_schedules')
-          .insert({
+        const schedule = await insertSchedule(req.db, {
             user_id: req.user.id,
             subject_id: subjectId,
             subject_type: subjectType,
@@ -415,10 +437,8 @@ export function createApp() {
             weekdays: entry.weekdays ?? [],
             last_done: entry.lastDone ?? null,
             lead: entry.lead || null,
-          })
-          .select('*')
-          .single();
-        if (error) throw error;
+            slot_hours: overrides,
+          });
         for (const due of times) {
           const { error: taskError } = await req.db.from('care_tasks').insert({
             user_id: req.user.id,
@@ -644,14 +664,51 @@ async function profileJson(req) {
   };
 }
 
+function preferredSlotsFrom(value) {
+  const raw = Array.isArray(value) ? value : String(value ?? 'morning').split(',');
+  const slots = raw
+    .map((item) => String(item).trim())
+    .filter((item) => item === 'morning' || item === 'afternoon' || item === 'evening');
+  return slots.length ? slots : ['morning'];
+}
+
+function missingColumn(error, column) {
+  const text = `${error?.message ?? ''} ${error?.details ?? ''} ${error?.hint ?? ''} ${error?.code ?? ''}`;
+  return text.includes(column) || error?.code === 'PGRST204' || error?.code === '42703';
+}
+
+async function upsertSettings(db, patch) {
+  const first = await db.from('user_settings').upsert(patch, { onConflict: 'user_id' }).select('*').single();
+  if (!first.error) return first.data;
+  if (!missingColumn(first.error, 'slot_hours')) throw first.error;
+  const fallback = { ...patch };
+  delete fallback.slot_hours;
+  const retry = await db.from('user_settings').upsert(fallback, { onConflict: 'user_id' }).select('*').single();
+  if (retry.error) throw retry.error;
+  return retry.data;
+}
+
+async function insertSchedule(db, row) {
+  const first = await db.from('care_schedules').insert(row).select('*').single();
+  if (!first.error) return first.data;
+  if (!missingColumn(first.error, 'slot_hours')) throw first.error;
+  const fallback = { ...row };
+  delete fallback.slot_hours;
+  const retry = await db.from('care_schedules').insert(fallback).select('*').single();
+  if (retry.error) throw retry.error;
+  return retry.data;
+}
+
 function settingsJson(row) {
   return {
     reminders: row?.reminders ?? true,
     overdue: row?.overdue ?? true,
     summary: row?.summary ?? true,
     tips: row?.tips ?? false,
-    preferred: row?.preferred_slot ?? 'morning',
+    preferred: preferredSlotsFrom(row?.preferred_slot)[0],
+    preferredSlots: preferredSlotsFrom(row?.preferred_slot),
     lead: row?.lead ?? '30 min before',
+    slotHours: normalizeSlotHours(row?.slot_hours),
   };
 }
 
@@ -703,7 +760,57 @@ function scheduleJson(row) {
     weekdays: row.weekdays ?? [],
     lastDone: row.last_done,
     lead: row.lead ?? null,
+    slotHours: row.slot_hours ?? {},
   };
+}
+
+async function subjectName(db, subjectId, subjectType) {
+  const table = subjectType === 'pet' ? 'pets' : 'plants';
+  const { data } = await db.from(table).select('name').eq('id', subjectId).maybeSingle();
+  return data?.name ?? '';
+}
+
+async function rebuildOpenTasks(db, userId, offset, accountHours) {
+  const { data: schedules, error } = await db.from('care_schedules').select('*').eq('user_id', userId);
+  if (error) throw error;
+  for (const row of schedules ?? []) {
+    const times = duesOnCycle(
+      {
+        frequency: row.frequency,
+        reminders: row.reminders ?? [],
+        everyDays: row.every_days,
+        weekdays: row.weekdays ?? [],
+        lastDone: row.last_done,
+        slotHours: mergeSlotHours(accountHours, row.slot_hours),
+      },
+      offset,
+    );
+    const { error: updateError } = await db
+      .from('care_schedules')
+      .update({ next_due: times[0] })
+      .eq('id', row.id);
+    if (updateError) throw updateError;
+    const { error: dropError } = await db
+      .from('care_tasks')
+      .delete()
+      .eq('schedule_id', row.id)
+      .eq('status', 'due');
+    if (dropError) throw dropError;
+    const name = await subjectName(db, row.subject_id, row.subject_type);
+    for (const due of times) {
+      const { error: taskError } = await db.from('care_tasks').insert({
+        user_id: userId,
+        schedule_id: row.id,
+        subject_id: row.subject_id,
+        subject_type: row.subject_type,
+        subject_name: name,
+        action: row.action,
+        due_at: due,
+        status: 'due',
+      });
+      if (taskError) throw taskError;
+    }
+  }
 }
 
 function taskJson(row) {

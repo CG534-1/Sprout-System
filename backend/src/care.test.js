@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isSummaryTime, localDayKey, nextDue, preferredHour, duesOnCycle, upcomingOnNextDay } from './care.js';
+import {
+  isSummaryTime,
+  localDayKey,
+  mergeSlotHours,
+  nextDue,
+  preferredHour,
+  duesOnCycle,
+  upcomingOnNextDay,
+} from './care.js';
 
 test('next care later today stays on today', () => {
   const now = new Date('2026-09-30T07:00:00.000Z');
@@ -114,4 +122,46 @@ test('coming up is empty when nothing is due after today', () => {
     { status: 'done', due_at: '2026-10-02T09:00:00.000Z' },
   ];
   assert.deepEqual(upcomingOnNextDay(rows, '2026-10-01', 0), []);
+});
+
+test('a custom evening clock is used for that care', () => {
+  const now = new Date('2026-09-30T10:00:00.000Z');
+  const due = nextDue(
+    {
+      frequency: 'daily',
+      reminders: ['evening'],
+      weekdays: [],
+      slotHours: { evening: { hour: 19, minute: 0 } },
+    },
+    0,
+    now,
+  );
+  assert.equal(due, '2026-09-30T19:00:00.000Z');
+});
+
+test('a care override wins over the account clock', () => {
+  const hours = mergeSlotHours(
+    { evening: { hour: 18, minute: 0 } },
+    { evening: { hour: 20, minute: 0 } },
+  );
+  assert.equal(hours.evening.hour, 20);
+  assert.equal(hours.morning.hour, 9);
+});
+
+test('custom minutes stay on the due time', () => {
+  const now = new Date('2026-10-01T08:00:00.000Z');
+  const times = duesOnCycle(
+    {
+      frequency: 'daily',
+      reminders: ['morning', 'evening'],
+      weekdays: [],
+      slotHours: {
+        morning: { hour: 8, minute: 15 },
+        evening: { hour: 20, minute: 0 },
+      },
+    },
+    0,
+    now,
+  );
+  assert.deepEqual(times, ['2026-10-01T08:15:00.000Z', '2026-10-01T20:00:00.000Z']);
 });

@@ -10,6 +10,7 @@ import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/data/models/care_enums.dart';
 import 'package:sprout/data/models/care_schedule.dart';
+import 'package:sprout/data/models/slot_hours.dart';
 import 'package:sprout/data/models/pet.dart';
 import 'package:sprout/data/models/plant.dart';
 import 'package:sprout/data/services/care_service.dart';
@@ -83,6 +84,11 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
   String? _bowlLead;
   String? _walkLead;
   var _accountLead = '30 min before';
+  var _accountClocks = SlotHours.defaults;
+  final _waterClocks = <CareSlot, TimeOfDay>{};
+  final _feedClocks = <CareSlot, TimeOfDay>{};
+  final _bowlClocks = <CareSlot, TimeOfDay>{};
+  final _walkClocks = <CareSlot, TimeOfDay>{};
 
   static const _leadChoices = [
     '15 min before',
@@ -102,7 +108,7 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
     _walkEveryDays = TextEditingController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusManager.instance.primaryFocus?.unfocus();
-      _loadAccountLead();
+      _loadAccountDefaults();
     });
     final existing = widget.args.existing;
     if (existing == null) return;
@@ -116,10 +122,12 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
             _everyDays.text = '${schedule.everyDays}';
           }
           _waterLead = schedule.lead;
+          _waterClocks.addAll(schedule.slotHours.times);
         case CareAction.feed:
           _feeds = schedule.timesPerDay;
           _feedTimes.addAll(schedule.reminders);
           _feedLead = schedule.lead;
+          _feedClocks.addAll(schedule.slotHours.times);
         case CareAction.waterBowl:
           _bowl = true;
           _bowlFrequency = schedule.frequency;
@@ -129,6 +137,7 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
             _bowlEveryDays.text = '${schedule.everyDays}';
           }
           _bowlLead = schedule.lead;
+          _bowlClocks.addAll(schedule.slotHours.times);
         case CareAction.walk:
           _walks = true;
           _walkFrequency = schedule.frequency;
@@ -139,6 +148,7 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
             _walkEveryDays.text = '${schedule.everyDays}';
           }
           _walkLead = schedule.lead;
+          _walkClocks.addAll(schedule.slotHours.times);
         case CareAction.mist:
         case CareAction.fertilize:
         case CareAction.groom:
@@ -155,14 +165,38 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
     super.dispose();
   }
 
-  Future<void> _loadAccountLead() async {
+  Future<void> _loadAccountDefaults() async {
     try {
       final settings = await context.read<ProfileService>().settings();
       if (!mounted) return;
-      setState(() => _accountLead = settings.lead);
+      setState(() {
+        _accountLead = settings.lead;
+        _accountClocks = settings.slotHours;
+        if (widget.args.existing == null) {
+          if (_plant && _waterTimes.isEmpty) {
+            _waterTimes.addAll(settings.preferredSlots);
+          }
+          if (!_plant && _feedTimes.isEmpty) {
+            _feedTimes.addAll(settings.preferredSlots);
+          }
+        }
+      });
     } on AppException {
-      // The per-schedule default just stays at 30 minutes.
+      // The per-schedule default just stays at 30 minutes and 9 / 1 / 6.
     }
+  }
+
+  SlotHours _clocksFor(Map<CareSlot, TimeOfDay> overrides) {
+    return _accountClocks.merge(SlotHours(overrides));
+  }
+
+  Future<void> _pickClock(CareSlot slot, Map<CareSlot, TimeOfDay> overrides) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: overrides[slot] ?? _accountClocks.of(slot),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => overrides[slot] = picked);
   }
 
   int? get _customDays => int.tryParse(_everyDays.text.trim());
@@ -319,6 +353,7 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
               : const [],
           lastDone: args.lastWatered,
           lead: _waterLead ?? _accountLead,
+          slotHours: SlotHours(Map.of(_waterClocks)),
         ),
       ];
     }
@@ -330,6 +365,7 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
         reminders: _feedTimes.toList(),
         lastDone: args.lastFed,
         lead: _feedLead ?? _accountLead,
+        slotHours: SlotHours(Map.of(_feedClocks)),
       ),
     ];
     if (_bowl && _bowlFrequency != null && _bowlTimes.isNotEmpty) {
@@ -346,6 +382,7 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
               : const [],
           lastDone: args.lastBowl,
           lead: _bowlLead ?? _accountLead,
+          slotHours: SlotHours(Map.of(_bowlClocks)),
         ),
       );
     }
@@ -364,6 +401,7 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
               : const [],
           lastDone: args.lastWalk,
           lead: _walkLead ?? _accountLead,
+          slotHours: SlotHours(Map.of(_walkClocks)),
         ),
       );
     }
@@ -404,16 +442,21 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
                   22,
                   12 + MediaQuery.paddingOf(context).bottom,
                 ),
-                child: CareActionButton(
-                  label: _saving
-                      ? 'Saving'
-                      : widget.args.existing == null
-                      ? 'Add $_name ${_plant ? '🌿' : '🐾'}'
-                      : 'Save $_name ${_plant ? '🌿' : '🐾'}',
-                  enabled: ready && !_saving,
-                  busy: _saving,
-                  top: 10,
-                  onPressed: _save,
+                child: Column(
+                  children: [
+                    CareActionButton(
+                      label: _saving
+                          ? 'Saving'
+                          : widget.args.existing == null
+                          ? 'Add $_name ${_plant ? '🌿' : '🐾'}'
+                          : 'Save $_name ${_plant ? '🌿' : '🐾'}',
+                      enabled: ready && !_saving,
+                      busy: _saving,
+                      top: 10,
+                      onPressed: _save,
+                    ),
+                    CareCancelButton(onPressed: _saving ? null : _leave),
+                  ],
                 ),
               ),
             ],
@@ -477,9 +520,11 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
       const CareLabel('REMIND ME AT (select all that apply)'),
       CareSlots(
         selected: _waterTimes,
+        clocks: _clocksFor(_waterClocks),
         onToggle: (slot) => setState(() {
           if (!_waterTimes.add(slot)) _waterTimes.remove(slot);
         }),
+        onCustom: (slot) => _pickClock(slot, _waterClocks),
       ),
       ..._leadChips(_waterLead, (lead) => _waterLead = lead),
     ];
@@ -501,9 +546,11 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
           const SizedBox(height: 8),
           CareSlots(
             selected: _feedTimes,
+            clocks: _clocksFor(_feedClocks),
             onToggle: (slot) => setState(() {
               if (!_feedTimes.add(slot)) _feedTimes.remove(slot);
             }),
+            onCustom: (slot) => _pickClock(slot, _feedClocks),
           ),
           ..._leadChips(_feedLead, (lead) => _feedLead = lead),
         ],
@@ -530,9 +577,11 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
             const SizedBox(height: 8),
             CareSlots(
               selected: _bowlTimes,
+              clocks: _clocksFor(_bowlClocks),
               onToggle: (slot) => setState(() {
                 if (!_bowlTimes.add(slot)) _bowlTimes.remove(slot);
               }),
+              onCustom: (slot) => _pickClock(slot, _bowlClocks),
             ),
             ..._leadChips(_bowlLead, (lead) => _bowlLead = lead),
           ],
@@ -567,9 +616,11 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
             const SizedBox(height: 8),
             CareSlots(
               selected: _walkTimes,
+              clocks: _clocksFor(_walkClocks),
               onToggle: (slot) => setState(() {
                 if (!_walkTimes.add(slot)) _walkTimes.remove(slot);
               }),
+              onCustom: (slot) => _pickClock(slot, _walkClocks),
             ),
             ..._leadChips(_walkLead, (lead) => _walkLead = lead),
           ],

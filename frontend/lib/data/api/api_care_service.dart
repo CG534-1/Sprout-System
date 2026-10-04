@@ -176,6 +176,7 @@ class ApiCareService extends CareService {
       'weekdays': entry.weekdays,
       'lastDone': entry.lastDone?.toIso8601String(),
       'lead': entry.lead,
+      'slotHours': entry.slotHours.toJson(),
     };
   }
 }
