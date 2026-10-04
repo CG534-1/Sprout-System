@@ -1,8 +1,7 @@
-import { leadMinutes, localDayKey, preferredHour, wallNow, wallParts } from './care.js';
+import { isSummaryTime, leadMinutes, localDayKey, wallNow, wallParts } from './care.js';
 import { messaging } from './firebase.js';
 
-export async function dispatchReminders(admin, now = new Date()) {
-  const sender = messaging();
+export async function dispatchReminders(admin, now = new Date(), sender = messaging()) {
   const { data: settings, error } = await admin.from('user_settings').select('*');
   if (error) throw error;
   let sent = 0;
@@ -69,13 +68,12 @@ async function dispatchUser(admin, sender, setting, now) {
   if (
     setting.summary &&
     setting.summary_sent_on !== today &&
-    wall.hour === preferredHour(setting.preferred_slot) &&
+    isSummaryTime(wall) &&
     dueToday.length
   ) {
-    const tip = setting.tips ? ' A little progress, every day.' : '';
     const ok = await send(sender, admin, setting.user_id, targets, {
       title: 'Today on Sprout',
-      body: `${dueToday.length} care task${dueToday.length === 1 ? '' : 's'} today.${tip}`,
+      body: `${dueToday.length} care task${dueToday.length === 1 ? '' : 's'} today.`,
     });
     if (ok) {
       await admin.from('user_settings').update({ summary_sent_on: today }).eq('user_id', setting.user_id);

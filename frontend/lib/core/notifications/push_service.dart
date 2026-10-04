@@ -9,20 +9,40 @@ Future<void> sproutBackgroundMessage(RemoteMessage message) async {}
 
 class PushService {
   static var _started = false;
+  static var _refreshBound = false;
 
   static Future<void> start(ProfileService profile) async {
-    final token = await _token(ask: false);
-    if (token == null) return;
-    await profile.registerDevice(token: token, platform: _platform);
+    try {
+      final settings = await profile.settings();
+      if (settings.wantsPush) {
+        await enable(profile);
+        return;
+      }
+    } catch (_) {}
+    final token = await _token(ask: !kIsWeb);
+    if (token != null) {
+      await profile.registerDevice(token: token, platform: _platform);
+    }
+    _listenRefresh(profile);
   }
 
   static Future<void> enable(ProfileService profile) async {
     final token = await _token(ask: true);
-    if (token == null) return;
-    await profile.registerDevice(token: token, platform: _platform);
+    if (token != null) {
+      await profile.registerDevice(token: token, platform: _platform);
+    }
+    _listenRefresh(profile);
   }
 
   static String get _platform => kIsWeb ? 'web' : 'android';
+
+  static void _listenRefresh(ProfileService profile) {
+    if (_refreshBound || Firebase.apps.isEmpty) return;
+    _refreshBound = true;
+    FirebaseMessaging.instance.onTokenRefresh.listen((token) {
+      profile.registerDevice(token: token, platform: _platform);
+    });
+  }
 
   static Future<String?> _token({required bool ask}) async {
     final config = SproutConfig.fromEnvironment();

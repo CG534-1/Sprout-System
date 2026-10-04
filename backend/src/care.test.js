@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { localDayKey, nextDue, preferredHour, duesOnCycle, upcomingOnNextDay } from './care.js';
+import { isSummaryTime, localDayKey, nextDue, preferredHour, duesOnCycle, upcomingOnNextDay } from './care.js';
 
 test('next care later today stays on today', () => {
   const now = new Date('2026-09-30T07:00:00.000Z');
@@ -62,10 +62,16 @@ test('set days uses the next selected weekday', () => {
   assert.equal(due, '2026-10-02T18:00:00.000Z');
 });
 
-test('a daily summary uses the saved time of day', () => {
+test('preferred care hours stay on the plant and pet slots', () => {
   assert.equal(preferredHour('morning'), 9);
   assert.equal(preferredHour('afternoon'), 13);
   assert.equal(preferredHour('evening'), 18);
+});
+
+test('daily summary is 8:45 local, not a care slot', () => {
+  assert.equal(isSummaryTime({ hour: 8, minute: 44 }), false);
+  assert.equal(isSummaryTime({ hour: 8, minute: 45 }), true);
+  assert.equal(isSummaryTime({ hour: 9, minute: 0 }), false);
 });
 
 test('each selected reminder becomes its own task on that day', () => {

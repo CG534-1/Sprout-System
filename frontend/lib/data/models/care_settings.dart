@@ -14,6 +14,8 @@ class CareSettings {
   final bool overdue;
   final bool summary;
   final bool tips;
+
+  bool get wantsPush => reminders || overdue || summary;
   final CareSlot preferred;
   final String lead;
 

@@ -67,6 +67,9 @@ class _ProfilePageState extends State<ProfilePage> {
       _preferred = settings.preferred;
       _lead = settings.lead;
     });
+    if (settings.wantsPush) {
+      await PushService.enable(profile);
+    }
   }
 
   int _careStreak(Set<DateTime> days) {
@@ -182,26 +185,31 @@ class _ProfilePageState extends State<ProfilePage> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: _Settings(
-                    onNotifications: () => _open(
-                      NotificationsSheet(
-                        reminders: _reminders,
-                        overdue: _overdue,
-                        summary: _summary,
-                        tips: _tips,
-                        onChanged: (reminders, overdue, summary, tips) {
-                          setState(() {
-                            _reminders = reminders;
-                            _overdue = overdue;
-                            _summary = summary;
-                            _tips = tips;
-                          });
-                          _saveSettings();
-                          if (reminders || overdue || summary) {
-                            PushService.enable(context.read<ProfileService>());
-                          }
-                        },
-                      ),
-                    ),
+                    onNotifications: () {
+                      if (_reminders || _overdue || _summary) {
+                        PushService.enable(context.read<ProfileService>());
+                      }
+                      _open(
+                        NotificationsSheet(
+                          reminders: _reminders,
+                          overdue: _overdue,
+                          summary: _summary,
+                          tips: _tips,
+                          onChanged: (reminders, overdue, summary, tips) {
+                            setState(() {
+                              _reminders = reminders;
+                              _overdue = overdue;
+                              _summary = summary;
+                              _tips = tips;
+                            });
+                            _saveSettings();
+                            if (reminders || overdue || summary) {
+                              PushService.enable(context.read<ProfileService>());
+                            }
+                          },
+                        ),
+                      );
+                    },
                     onPreferences: () => _open(
                       PreferencesSheet(
                         preferred: _preferred,

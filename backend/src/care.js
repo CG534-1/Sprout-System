@@ -28,8 +28,15 @@ export function wallParts(date) {
     month: date.getUTCMonth() + 1,
     day: date.getUTCDate(),
     hour: date.getUTCHours(),
+    minute: date.getUTCMinutes(),
     weekday: date.getUTCDay() === 0 ? 7 : date.getUTCDay(),
   };
+}
+
+export const SUMMARY_LOCAL = { hour: 8, minute: 45 };
+
+export function isSummaryTime(wall) {
+  return wall.hour === SUMMARY_LOCAL.hour && wall.minute >= SUMMARY_LOCAL.minute;
 }
 
 export function upcomingOnNextDay(rows, todayKey, offsetMinutes) {
