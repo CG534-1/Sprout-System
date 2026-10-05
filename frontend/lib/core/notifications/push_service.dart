@@ -1,8 +1,8 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:sprout/core/config.dart';
+import 'package:sprout/core/notifications/local_push.dart';
 import 'package:sprout/data/services/profile_service.dart';
 
 @pragma('vm:entry-point')
@@ -13,7 +13,7 @@ class PushService {
   static var _refreshBound = false;
   static var _asked = false;
   static var _foregroundBound = false;
-  static final _local = FlutterLocalNotificationsPlugin();
+  static final _local = createLocalPush();
 
   static Future<void> start(ProfileService profile) async {
     try {
@@ -56,37 +56,11 @@ class PushService {
       final note = message.notification;
       if (note == null) return;
       await _local.show(
-        note.hashCode,
-        note.title,
-        note.body,
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'sprout_care',
-            'Sprout care',
-            channelDescription: 'Care reminders and overdue alerts',
-            importance: Importance.high,
-            priority: Priority.high,
-          ),
-        ),
+        id: note.hashCode,
+        title: note.title,
+        body: note.body,
       );
     });
-  }
-
-  static Future<void> _prepareLocal() async {
-    if (kIsWeb) return;
-    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    await _local.initialize(const InitializationSettings(android: android));
-    final androidPlugin = _local
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-    await androidPlugin?.createNotificationChannel(
-      const AndroidNotificationChannel(
-        'sprout_care',
-        'Sprout care',
-        description: 'Care reminders and overdue alerts',
-        importance: Importance.high,
-      ),
-    );
-    await androidPlugin?.requestNotificationsPermission();
   }
 
   static Future<String?> _token({required bool ask}) async {
@@ -114,7 +88,7 @@ class PushService {
         FirebaseMessaging.onBackgroundMessage(sproutBackgroundMessage);
         _started = true;
       }
-      await _prepareLocal();
+      if (!kIsWeb) await _local.prepare();
       final messaging = FirebaseMessaging.instance;
       if (ask && !_asked) {
         _asked = true;
