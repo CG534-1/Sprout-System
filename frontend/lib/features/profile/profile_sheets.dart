@@ -586,7 +586,7 @@ class AppearanceSheet extends StatelessWidget {
     const options = [
       ('☀️', 'Light', 'Bright & fresh'),
       ('🌙', 'Dark', 'Easy on the eyes'),
-      ('📱', 'System', 'Follows your device'),
+      ('📱', 'System', 'Match device'),
     ];
     return CareSheet(
       child: ListView(
@@ -623,23 +623,26 @@ class AppearanceSheet extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    for (var index = 0; index < options.length; index++) ...[
-                      if (index > 0) const SizedBox(width: 8),
-                      Expanded(
-                        child: _ThemeCard(
-                          emoji: options[index].$1,
-                          title: options[index].$2,
-                          subtitle: options[index].$3,
-                          selected: theme == options[index].$2,
-                          onTap: () => context.read<ThemeController>().select(
-                            options[index].$2,
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var index = 0; index < options.length; index++) ...[
+                        if (index > 0) const SizedBox(width: 8),
+                        Expanded(
+                          child: _ThemeCard(
+                            emoji: options[index].$1,
+                            title: options[index].$2,
+                            subtitle: options[index].$3,
+                            selected: theme == options[index].$2,
+                            onTap: () => context.read<ThemeController>().select(
+                              options[index].$2,
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Container(
@@ -1015,7 +1018,8 @@ class _ThemeCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(8, 14, 8, 12),
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(6, 14, 6, 12),
         decoration: BoxDecoration(
           color: selected ? careField : AppColors.onboardingPaper,
           borderRadius: BorderRadius.circular(16),
@@ -1025,22 +1029,30 @@ class _ThemeCard extends StatelessWidget {
           ),
         ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(emoji, style: const TextStyle(fontSize: 22)),
             const SizedBox(height: 4),
             Text(
               title,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: GoogleFonts.dmSans(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: AppColors.ink,
               ),
             ),
+            const SizedBox(height: 2),
             Text(
               subtitle,
               textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: GoogleFonts.dmSans(
                 fontSize: 10,
+                height: 1.25,
                 color: AppColors.onboardingBody,
               ),
             ),

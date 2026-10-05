@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { createClient } from '@supabase/supabase-js';
+import { dispatchReminders } from './dispatch.js';
 import { createApp } from './http.js';
 
 const envPath = join(dirname(fileURLToPath(import.meta.url)), '../.env');
@@ -16,7 +18,27 @@ if (existsSync(envPath)) {
   }
 }
 
+function service() {
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+function startReminderLoop() {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return;
+  const tick = async () => {
+    try {
+      await dispatchReminders(service());
+    } catch (error) {
+      console.error(error);
+    }
+  };
+  tick();
+  setInterval(tick, 60_000);
+}
+
 const port = Number(process.env.PORT || 3000);
 createApp().listen(port, () => {
   console.log(`Sprout API listening on ${port}`);
+  startReminderLoop();
 });

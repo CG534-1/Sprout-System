@@ -164,6 +164,10 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
       setState(() {
         _accountLead = settings.lead;
         _accountClocks = settings.slotHours;
+        _waterLead ??= settings.lead;
+        _feedLead ??= settings.lead;
+        _bowlLead ??= settings.lead;
+        _walkLead ??= settings.lead;
         if (widget.args.existing == null) {
           if (_plant && _waterTimes.isEmpty) {
             _waterTimes.addAll(settings.preferredSlots);

@@ -432,10 +432,12 @@ export function createApp() {
             every_days: entry.everyDays ?? null,
             weekdays: entry.weekdays ?? [],
             last_done: entry.lastDone ?? null,
-            lead: entry.lead || null,
+            lead: entry.lead || setting?.lead || '30 min before',
             slot_hours: overrides,
           });
         for (const due of times) {
+          const dueAt = new Date(due);
+          const alreadyPast = dueAt.getTime() <= Date.now();
           const { error: taskError } = await req.db.from('care_tasks').insert({
             user_id: req.user.id,
             schedule_id: schedule.id,
@@ -445,6 +447,9 @@ export function createApp() {
             action: entry.action,
             due_at: due,
             status: 'due',
+            // Past-due rows keep Home filled, but must not push on save.
+            reminded_at: alreadyPast ? new Date().toISOString() : null,
+            overdue_sent_at: alreadyPast ? new Date().toISOString() : null,
           });
           if (taskError) throw taskError;
         }
@@ -880,6 +885,8 @@ async function rebuildOpenTasks(db, userId, offset, accountHours) {
     if (dropError) throw dropError;
     const name = await subjectName(db, row.subject_id, row.subject_type);
     for (const due of times) {
+      const dueAt = new Date(due);
+      const alreadyPast = dueAt.getTime() <= Date.now();
       const { error: taskError } = await db.from('care_tasks').insert({
         user_id: userId,
         schedule_id: row.id,
@@ -889,6 +896,8 @@ async function rebuildOpenTasks(db, userId, offset, accountHours) {
         action: row.action,
         due_at: due,
         status: 'due',
+        reminded_at: alreadyPast ? new Date().toISOString() : null,
+        overdue_sent_at: alreadyPast ? new Date().toISOString() : null,
       });
       if (taskError) throw taskError;
     }

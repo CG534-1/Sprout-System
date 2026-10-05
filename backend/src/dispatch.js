@@ -68,11 +68,22 @@ async function dispatchUser(admin, sender, setting, now) {
 
   for (const task of open) {
     const due = new Date(task.due_at).getTime();
-    const lead = leadMinutes(leadBySchedule.get(task.schedule_id) || setting.lead);
+    const scheduleLead = leadBySchedule.get(task.schedule_id);
+    const lead = leadMinutes(scheduleLead || setting.lead);
     const trigger = due - lead * 60000;
-    // Fire once the lead time is reached. If a tick was late and due already
-    // passed, still send the care reminder once before overdue takes over.
-    if (setting.reminders && !task.reminded_at && now.getTime() >= trigger) {
+    const nowMs = now.getTime();
+    if (setting.reminders && !task.reminded_at && nowMs >= trigger && nowMs < due) {
+      const ok = await send(sender, admin, setting.user_id, targets, {
+        title: 'Care reminder',
+        body: `${label(task.action)} ${task.subject_name}`,
+      });
+      if (ok) {
+        await admin.from('care_tasks').update({ reminded_at: now.toISOString() }).eq('id', task.id);
+        task.reminded_at = now.toISOString();
+        sent += 1;
+      }
+    } else if (setting.reminders && !task.reminded_at && nowMs >= due) {
+      // Lead window was missed (late cron). Still send the care reminder once.
       const ok = await send(sender, admin, setting.user_id, targets, {
         title: 'Care reminder',
         body: `${label(task.action)} ${task.subject_name}`,
@@ -85,7 +96,7 @@ async function dispatchUser(admin, sender, setting, now) {
     } else if (
       setting.overdue &&
       !task.overdue_sent_at &&
-      now.getTime() >= due
+      nowMs >= due
     ) {
       const ok = await send(sender, admin, setting.user_id, targets, {
         title: 'Overdue care',
