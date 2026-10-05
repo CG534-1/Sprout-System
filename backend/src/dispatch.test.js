@@ -136,6 +136,51 @@ test('a due task in the lead window sends a reminder once', async () => {
   assert.equal(await dispatchReminders(admin, now, senderOk()), 0);
 });
 
+test('a 15 minute lead fires at the exact trigger minute', async () => {
+  const admin = createAdmin({
+    settings: [{ ...setting, lead: '15 min before' }],
+    tokens: [{ user_id: 'user-1', token: 'tok-1' }],
+    schedules: [{ id: 's1', user_id: 'user-1', lead: '15 min before' }],
+    tasks: [{
+      id: 't1',
+      user_id: 'user-1',
+      schedule_id: 's1',
+      status: 'due',
+      due_at: '2026-10-04T18:45:00.000Z',
+      action: 'water',
+      subject_name: 'Fern',
+      reminded_at: null,
+    }],
+  });
+  assert.equal(await dispatchReminders(admin, new Date('2026-10-04T18:29:00.000Z'), senderOk()), 0);
+  assert.equal(await dispatchReminders(admin, new Date('2026-10-04T18:30:00.000Z'), senderOk()), 1);
+  assert.equal(admin.store.push_notifications[0].title, 'Care reminder');
+  assert.equal(admin.store.push_notifications[0].body, 'Water Fern');
+});
+
+test('a missed lead still sends the care reminder once before overdue', async () => {
+  const admin = createAdmin({
+    settings: [{ ...setting, lead: '15 min before' }],
+    tokens: [{ user_id: 'user-1', token: 'tok-1' }],
+    schedules: [{ id: 's1', user_id: 'user-1', lead: '15 min before' }],
+    tasks: [{
+      id: 't1',
+      user_id: 'user-1',
+      schedule_id: 's1',
+      status: 'due',
+      due_at: '2026-10-04T18:45:00.000Z',
+      action: 'water',
+      subject_name: 'Fern',
+      reminded_at: null,
+      overdue_sent_at: null,
+    }],
+  });
+  assert.equal(await dispatchReminders(admin, new Date('2026-10-04T18:46:00.000Z'), senderOk()), 1);
+  assert.equal(admin.store.push_notifications[0].title, 'Care reminder');
+  assert.equal(await dispatchReminders(admin, new Date('2026-10-04T18:47:00.000Z'), senderOk()), 1);
+  assert.equal(admin.store.push_notifications[1].title, 'Overdue care');
+});
+
 test('an open task past due sends an overdue notice', async () => {
   const admin = createAdmin({
     settings: [setting],
@@ -147,6 +192,7 @@ test('an open task past due sends an overdue notice', async () => {
       due_at: '2026-10-04T09:00:00.000Z',
       action: 'walk',
       subject_name: 'Milo',
+      reminded_at: '2026-10-04T08:30:00.000Z',
       overdue_sent_at: null,
     }],
   });
@@ -158,7 +204,13 @@ test('an open task past due sends an overdue notice', async () => {
 
 test('daily summary sends at 8:45 local, not the care preference slot', async () => {
   const admin = createAdmin({
-    settings: [{ ...setting, summary: true, overdue: false, preferred_slot: 'evening' }],
+    settings: [{
+      ...setting,
+      summary: true,
+      reminders: false,
+      overdue: false,
+      preferred_slot: 'evening',
+    }],
     tokens: [{ user_id: 'user-1', token: 'tok-1' }],
     tasks: [{
       id: 't1',
@@ -175,6 +227,23 @@ test('daily summary sends at 8:45 local, not the care preference slot', async ()
   assert.equal(admin.store.push_notifications[0].title, 'Today on Sprout');
   assert.equal(admin.store.user_settings[0].summary_sent_on, '2026-10-04');
   assert.equal(await dispatchReminders(admin, new Date('2026-10-04T18:00:00.000Z'), senderOk()), 0);
+});
+
+test('daily summary still sends if the 8:45 tick is a little late', async () => {
+  const admin = createAdmin({
+    settings: [{ ...setting, summary: true, reminders: false, overdue: false }],
+    tokens: [{ user_id: 'user-1', token: 'tok-1' }],
+    tasks: [{
+      id: 't1',
+      user_id: 'user-1',
+      status: 'due',
+      due_at: '2026-10-04T13:00:00.000Z',
+      action: 'walk',
+      subject_name: 'Milo',
+    }],
+  });
+  assert.equal(await dispatchReminders(admin, new Date('2026-10-04T09:05:00.000Z'), senderOk()), 1);
+  assert.equal(admin.store.push_notifications[0].title, 'Today on Sprout');
 });
 
 test('stale device tokens are dropped and the bell still records the note', async () => {

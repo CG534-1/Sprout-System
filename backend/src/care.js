@@ -42,7 +42,11 @@ export function wallParts(date) {
 export const SUMMARY_LOCAL = { hour: 8, minute: 45 };
 
 export function isSummaryTime(wall) {
-  return wall.hour === SUMMARY_LOCAL.hour && wall.minute >= SUMMARY_LOCAL.minute;
+  const minutes = wall.hour * 60 + wall.minute;
+  const start = SUMMARY_LOCAL.hour * 60 + SUMMARY_LOCAL.minute;
+  // Keep a short grace window so a late cron tick still delivers today's summary.
+  const end = start + 30;
+  return minutes >= start && minutes < end;
 }
 
 export function upcomingOnNextDay(rows, todayKey, offsetMinutes) {

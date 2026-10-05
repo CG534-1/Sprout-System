@@ -109,7 +109,9 @@ test('preferred care hours stay on the plant and pet slots', () => {
 test('daily summary is 8:45 local, not a care slot', () => {
   assert.equal(isSummaryTime({ hour: 8, minute: 44 }), false);
   assert.equal(isSummaryTime({ hour: 8, minute: 45 }), true);
-  assert.equal(isSummaryTime({ hour: 9, minute: 0 }), false);
+  assert.equal(isSummaryTime({ hour: 9, minute: 0 }), true);
+  assert.equal(isSummaryTime({ hour: 9, minute: 14 }), true);
+  assert.equal(isSummaryTime({ hour: 9, minute: 15 }), false);
 });
 
 test('each selected reminder becomes its own task on that day', () => {

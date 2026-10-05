@@ -70,13 +70,16 @@ async function dispatchUser(admin, sender, setting, now) {
     const due = new Date(task.due_at).getTime();
     const lead = leadMinutes(leadBySchedule.get(task.schedule_id) || setting.lead);
     const trigger = due - lead * 60000;
-    if (setting.reminders && !task.reminded_at && now.getTime() >= trigger && now.getTime() < due) {
+    // Fire once the lead time is reached. If a tick was late and due already
+    // passed, still send the care reminder once before overdue takes over.
+    if (setting.reminders && !task.reminded_at && now.getTime() >= trigger) {
       const ok = await send(sender, admin, setting.user_id, targets, {
         title: 'Care reminder',
         body: `${label(task.action)} ${task.subject_name}`,
       });
       if (ok) {
         await admin.from('care_tasks').update({ reminded_at: now.toISOString() }).eq('id', task.id);
+        task.reminded_at = now.toISOString();
         sent += 1;
       }
     } else if (

@@ -49,7 +49,7 @@ services:
     name: sprout-reminders
     runtime: node
     rootDir: backend
-    schedule: "*/15 * * * *"
+    schedule: "* * * * *"
     buildCommand: npm install
     startCommand: node scripts/dispatch.js
     envVars:
