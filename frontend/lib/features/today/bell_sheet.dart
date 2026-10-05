@@ -171,7 +171,7 @@ class _NoteRow extends StatelessWidget {
             note.title,
             style: GoogleFonts.dmSans(
               fontSize: 14,
-              fontWeight: FontWeight.w700,
+              fontWeight: note.read ? FontWeight.w600 : FontWeight.w700,
               color: AppColors.ink,
             ),
           ),
@@ -186,8 +186,14 @@ class _NoteRow extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            DateFormat('MMM d, h:mm a').format(note.createdAt.toLocal()),
-            style: GoogleFonts.dmMono(fontSize: 10, color: AppColors.onboardingBody),
+            [
+              DateFormat('MMM d, h:mm a').format(note.createdAt.toLocal()),
+              if (!note.read) 'New',
+            ].join(' · '),
+            style: GoogleFonts.dmMono(
+              fontSize: 10,
+              color: note.read ? AppColors.onboardingBody : AppColors.sproutGreen,
+            ),
           ),
         ],
       ),

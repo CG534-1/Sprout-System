@@ -13,8 +13,10 @@ class MainActivity : FlutterActivity() {
             val channel = NotificationChannel(
                 "sprout_care",
                 "Sprout care",
-                NotificationManager.IMPORTANCE_DEFAULT,
+                NotificationManager.IMPORTANCE_HIGH,
             )
+            channel.description = "Care reminders and overdue alerts"
+            channel.enableVibration(true)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }

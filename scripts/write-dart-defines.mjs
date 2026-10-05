@@ -26,7 +26,7 @@ writeFileSync(
   `${JSON.stringify({
     SUPABASE_URL: env.SUPABASE_URL ?? '',
     SUPABASE_ANON_KEY: env.SUPABASE_ANON_KEY ?? '',
-    API_BASE_URL: process.argv[2] || 'http://127.0.0.1:3010',
+    API_BASE_URL: process.argv[2] || 'https://sprout-api-a0tw.onrender.com',
     FIREBASE_API_KEY: env.FIREBASE_API_KEY ?? '',
     FIREBASE_APP_ID: env.FIREBASE_APP_ID ?? '',
     FIREBASE_MESSAGING_SENDER_ID: env.FIREBASE_MESSAGING_SENDER_ID ?? '',

@@ -135,6 +135,14 @@ async function send(sender, admin, userId, tokens, note) {
       const response = await sender.sendEachForMulticast({
         tokens,
         notification: note,
+        android: {
+          priority: 'high',
+          notification: {
+            channelId: 'sprout_care',
+            priority: 'high',
+            defaultSound: true,
+          },
+        },
       });
       const stale = [];
       response.responses.forEach((item, index) => {

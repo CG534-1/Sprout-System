@@ -15,7 +15,7 @@ class PushNote {
 
   factory PushNote.fromJson(Map<String, dynamic> json) {
     return PushNote(
-      id: json['id'] as String,
+      id: json['id'].toString(),
       title: json['title'] as String? ?? '',
       body: json['body'] as String? ?? '',
       createdAt: DateTime.parse(json['createdAt'] as String),

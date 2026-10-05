@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:sprout/core/config.dart';
 import 'package:sprout/data/services/profile_service.dart';
 
@@ -11,6 +12,8 @@ class PushService {
   static var _started = false;
   static var _refreshBound = false;
   static var _asked = false;
+  static var _foregroundBound = false;
+  static final _local = FlutterLocalNotificationsPlugin();
 
   static Future<void> start(ProfileService profile) async {
     try {
@@ -33,6 +36,7 @@ class PushService {
       await profile.registerDevice(token: token, platform: _platform);
     }
     _listenRefresh(profile);
+    _listenForeground();
   }
 
   static String get _platform => kIsWeb ? 'web' : 'android';
@@ -45,14 +49,55 @@ class PushService {
     });
   }
 
+  static void _listenForeground() {
+    if (_foregroundBound || kIsWeb || Firebase.apps.isEmpty) return;
+    _foregroundBound = true;
+    FirebaseMessaging.onMessage.listen((message) async {
+      final note = message.notification;
+      if (note == null) return;
+      await _local.show(
+        note.hashCode,
+        note.title,
+        note.body,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'sprout_care',
+            'Sprout care',
+            channelDescription: 'Care reminders and overdue alerts',
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+        ),
+      );
+    });
+  }
+
+  static Future<void> _prepareLocal() async {
+    if (kIsWeb) return;
+    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    await _local.initialize(const InitializationSettings(android: android));
+    final androidPlugin = _local
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    await androidPlugin?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'sprout_care',
+        'Sprout care',
+        description: 'Care reminders and overdue alerts',
+        importance: Importance.high,
+      ),
+    );
+    await androidPlugin?.requestNotificationsPermission();
+  }
+
   static Future<String?> _token({required bool ask}) async {
     final config = SproutConfig.fromEnvironment();
-    if (!config.pushReady) return null;
+    if (!config.pushReady && kIsWeb) return null;
     try {
       if (Firebase.apps.isEmpty) {
         // Android reads google-services.json. Passing the web app id here
         // breaks FCM on the phone even when the project itself is correct.
         if (kIsWeb) {
+          if (!config.pushReady) return null;
           await Firebase.initializeApp(
             options: FirebaseOptions(
               apiKey: config.firebaseApiKey,
@@ -69,6 +114,7 @@ class PushService {
         FirebaseMessaging.onBackgroundMessage(sproutBackgroundMessage);
         _started = true;
       }
+      await _prepareLocal();
       final messaging = FirebaseMessaging.instance;
       if (ask && !_asked) {
         _asked = true;

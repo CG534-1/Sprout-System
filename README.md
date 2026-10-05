@@ -14,12 +14,24 @@ npm start
 
 ## App
 
-From `frontend`:
+From the repo root, write local Flutter defines from `backend/.env` (the file is gitignored):
 
 ```
-flutter run -d chrome --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=... --dart-define=API_BASE_URL=http://127.0.0.1:3000
+node scripts/write-dart-defines.mjs
 ```
 
-The same defines are used for `flutter build apk`. Photos go to the private `care-media` bucket. Push notifications also need the Firebase defines, and they are not reliable in iPhone Safari.
+That points the app at the live API by default. For a local API instead:
+
+```
+node scripts/write-dart-defines.mjs http://127.0.0.1:3010
+```
+
+Then from `frontend`:
+
+```
+flutter run -d chrome --dart-define-from-file=dart-defines.local.json
+```
+
+The same defines file is used for `flutter build apk`. Photos go to the private `care-media` bucket. Push notifications also need the Firebase keys in `.env`, and they are not reliable in iPhone Safari.
 
 Render uses `render.yaml`: the API is a web service, the Flutter web build is a static site, and reminders run on a cron job.

@@ -10,6 +10,7 @@ import {
   overrideSlotHours,
   upcomingOnNextDay,
   utcOffsetMinutes,
+  wallToUtc,
 } from './care.js';
 import { dispatchForUser, dispatchReminders } from './dispatch.js';
 import { lookupSignupEmail } from './signup.js';
@@ -174,6 +175,8 @@ export function createApp() {
 
   app.get('/api/me/notifications', async (req, res, next) => {
     try {
+      const offset = utcOffsetMinutes(req);
+      await purgeReadNotes(req.db, req.user.id, offset);
       const { data, error } = await req.db
         .from('push_notifications')
         .select('*')
@@ -677,6 +680,19 @@ async function dispatchNow(admin, userId) {
   } catch (error) {
     console.error(error);
   }
+}
+
+async function purgeReadNotes(db, userId, offsetMinutes) {
+  const today = localDayKey(new Date().toISOString(), offsetMinutes);
+  const [year, month, day] = today.split('-').map(Number);
+  const startOfToday = wallToUtc(year, month, day, 0, offsetMinutes, 0).toISOString();
+  const { error } = await db
+    .from('push_notifications')
+    .delete()
+    .eq('user_id', userId)
+    .not('read_at', 'is', null)
+    .lt('read_at', startOfToday);
+  if (error) throw error;
 }
 
 async function ensureSettings(admin, userId, offsetMinutes = 0) {
