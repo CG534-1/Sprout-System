@@ -132,7 +132,7 @@ class _ProfilePageState extends State<ProfilePage> {
         child: Stack(
           children: [
             ListView(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
+              padding: EdgeInsets.fromLTRB(20, 0, 20, CareNav.scrollClearance(context)),
               children: [
                 const SizedBox(height: 28),
                 Center(child: _ProfileAvatar(user: user)),
@@ -294,6 +294,7 @@ class _Stat extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
+        constraints: const BoxConstraints(minHeight: 78),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
         decoration: BoxDecoration(
           color: accent ? AppColors.field : AppColors.onboardingPaper,
@@ -314,12 +315,17 @@ class _Stat extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              label,
-              style: GoogleFonts.dmMono(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: AppColors.onboardingBody,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.dmMono(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.onboardingBody,
+                ),
               ),
             ),
           ],

@@ -11,6 +11,12 @@ enum CareTab { today, care, history, profile }
 class CareNav extends StatelessWidget {
   const CareNav({super.key, required this.tab});
 
+  static const barHeight = 70.0;
+
+  static double scrollClearance(BuildContext context) {
+    return MediaQuery.paddingOf(context).bottom + barHeight + 32;
+  }
+
   final CareTab tab;
 
   @override
@@ -26,7 +32,7 @@ class CareNav extends StatelessWidget {
           child: SafeArea(
             top: false,
             child: SizedBox(
-              height: 70,
+              height: barHeight,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [

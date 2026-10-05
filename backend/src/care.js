@@ -201,6 +201,13 @@ export function nextDue(entry, offsetMinutes, now = new Date()) {
     wallToUtc(parts.year, parts.month, parts.day, parts.hour, offsetMinutes, parts.minute ?? 0);
 
   if (last) {
+    const lastIsToday = last.year === current.year && last.month === current.month && last.day === current.day;
+    if (lastIsToday) {
+      for (const slot of reminders) {
+        const at = atWall(current.year, current.month, current.day, clockFor(slot, hours), offsetMinutes);
+        if (at.getTime() >= now.getTime()) return at.toISOString();
+      }
+    }
     const fromLast = afterLast(last, entry, clock, interval);
     const instant = asInstant(fromLast);
     if (instant.getTime() >= now.getTime()) return instant.toISOString();

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/router/routes.dart';
@@ -133,12 +132,6 @@ class _DetailSheet extends StatelessWidget {
                         title: 'Reminder',
                         value: _reminders(water),
                       ),
-                      if (water.lastDone != null)
-                        _ScheduleRow(
-                          icon: '💧',
-                          title: 'Last watered',
-                          value: DateFormat('MMM d, y').format(water.lastDone!),
-                        ),
                     ],
                   ),
                 ],
@@ -164,13 +157,6 @@ class _DetailSheet extends StatelessWidget {
                             icon: '⏰',
                             title: 'Reminder',
                             value: _reminders(schedule),
-                          ),
-                        if (schedule.lastDone != null)
-                          _ScheduleRow(
-                            icon: '✓',
-                            title: _lastTitle(schedule.action),
-                            value: DateFormat('MMM d, y')
-                                .format(schedule.lastDone!),
                           ),
                       ],
                     ),
@@ -222,15 +208,6 @@ class _DetailSheet extends StatelessWidget {
       CareAction.waterBowl => 'WATER BOWL',
       CareAction.walk => 'WALKS',
       _ => action.label.toUpperCase(),
-    };
-  }
-
-  String _lastTitle(CareAction action) {
-    return switch (action) {
-      CareAction.feed => 'Last fed',
-      CareAction.waterBowl => 'Last refilled',
-      CareAction.walk => 'Last walked',
-      _ => 'Last done',
     };
   }
 

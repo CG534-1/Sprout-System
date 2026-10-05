@@ -92,7 +92,7 @@ class _HistoryPageState extends State<HistoryPage> {
         child: Stack(
           children: [
             ListView(
-              padding: const EdgeInsets.fromLTRB(20, 22, 20, 110),
+              padding: EdgeInsets.fromLTRB(20, 22, 20, CareNav.scrollClearance(context)),
               children: [
                 Text(
                   'A LITTLE PROGRESS, EVERY DAY',

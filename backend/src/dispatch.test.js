@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { dispatchForUser, dispatchReminders } from './dispatch.js';
 
-function createAdmin({ settings = [], tokens = [], tasks = [], schedules = [] } = {}) {
+function createAdmin({ settings = [], tokens = [], tasks = [], schedules = [], profiles = null } = {}) {
   const store = {
     user_settings: settings.map((row) => ({ ...row })),
     device_tokens: tokens.map((row) => ({ ...row })),
     care_tasks: tasks.map((row) => ({ ...row })),
     care_schedules: schedules.map((row) => ({ ...row })),
+    profiles: (profiles ?? settings.map((row) => ({ id: row.user_id }))).map((row) => ({ ...row })),
     push_notifications: [],
   };
   return {
@@ -53,7 +54,7 @@ function createAdmin({ settings = [], tokens = [], tasks = [], schedules = [] } 
           return Promise.resolve({ data: data[0] ?? null, error: null });
         },
         then(resolve, reject) {
-          let data = store[table];
+          let data = store[table] ?? [];
           for (const [column, value] of filters) {
             data = data.filter((row) => row[column] === value);
           }

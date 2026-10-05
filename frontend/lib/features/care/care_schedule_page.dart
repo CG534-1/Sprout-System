@@ -30,10 +30,6 @@ class CareScheduleArgs {
     this.location = '',
     this.notes = '',
     this.photo,
-    this.lastWatered,
-    this.lastFed,
-    this.lastBowl,
-    this.lastWalk,
     this.existing,
   });
 
@@ -44,10 +40,6 @@ class CareScheduleArgs {
   final String location;
   final String notes;
   final Uint8List? photo;
-  final DateTime? lastWatered;
-  final DateTime? lastFed;
-  final DateTime? lastBowl;
-  final DateTime? lastWalk;
   final CareDraft? existing;
 }
 
@@ -340,7 +332,6 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
   }
 
   List<CarePlanEntry> _entries() {
-    final args = widget.args;
     if (_plant) {
       return [
         CarePlanEntry(
@@ -351,7 +342,6 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
           weekdays: _frequency == CareFrequency.setDays
               ? (_weekdays.toList()..sort())
               : const [],
-          lastDone: args.lastWatered,
           lead: _waterLead ?? _accountLead,
           slotHours: SlotHours(Map.of(_waterClocks)),
         ),
@@ -363,7 +353,6 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
         frequency: CareFrequency.daily,
         timesPerDay: _feeds,
         reminders: _feedTimes.toList(),
-        lastDone: args.lastFed,
         lead: _feedLead ?? _accountLead,
         slotHours: SlotHours(Map.of(_feedClocks)),
       ),
@@ -380,7 +369,6 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
           weekdays: _bowlFrequency == CareFrequency.setDays
               ? (_bowlWeekdays.toList()..sort())
               : const [],
-          lastDone: args.lastBowl,
           lead: _bowlLead ?? _accountLead,
           slotHours: SlotHours(Map.of(_bowlClocks)),
         ),
@@ -399,7 +387,6 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
           weekdays: _walkFrequency == CareFrequency.setDays
               ? (_walkWeekdays.toList()..sort())
               : const [],
-          lastDone: args.lastWalk,
           lead: _walkLead ?? _accountLead,
           slotHours: SlotHours(Map.of(_walkClocks)),
         ),

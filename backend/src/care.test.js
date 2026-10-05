@@ -60,6 +60,21 @@ test('a new plan still starts today after the reminder hour', () => {
   assert.equal(due, '2026-09-30T09:00:00.000Z');
 });
 
+test('last watered today still keeps a later slot today', () => {
+  const now = new Date('2026-10-05T15:00:00.000Z');
+  const times = duesOnCycle(
+    {
+      frequency: 'daily',
+      reminders: ['morning', 'evening'],
+      weekdays: [],
+      lastDone: '2026-10-05T09:00:00.000Z',
+    },
+    0,
+    now,
+  );
+  assert.deepEqual(times, ['2026-10-05T18:00:00.000Z']);
+});
+
 test('last care counts forward, then the next slot if that time has passed', () => {
   const now = new Date('2026-09-30T12:00:00.000Z');
   const due = nextDue(

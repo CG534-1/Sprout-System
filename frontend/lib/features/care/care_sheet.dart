@@ -468,21 +468,24 @@ class CareSlots extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            for (final slot in CareSlot.values) ...[
-              if (slot != CareSlot.morning) const SizedBox(width: 8),
-              Expanded(
-                child: _SlotCard(
-                  slot: slot,
-                  clock: clocks.labelOf(slot),
-                  selected: selected.contains(slot),
-                  onTap: () => onToggle(slot),
-                  onDoubleTap: () => onCustom(slot),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final slot in CareSlot.values) ...[
+                if (slot != CareSlot.morning) const SizedBox(width: 8),
+                Expanded(
+                  child: _SlotCard(
+                    slot: slot,
+                    clock: clocks.labelOf(slot),
+                    selected: selected.contains(slot),
+                    onTap: () => onToggle(slot),
+                    onDoubleTap: () => onCustom(slot),
+                  ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
         const SizedBox(height: 8),
         Text(
@@ -539,6 +542,7 @@ class _SlotCard extends StatelessWidget {
       onTap: onTap,
       onDoubleTap: onDoubleTap,
       child: Container(
+        width: double.infinity,
         padding: const EdgeInsets.fromLTRB(6, 14, 6, 12),
         decoration: BoxDecoration(
           color: selected ? careField : AppColors.onboardingPaper,
@@ -557,20 +561,30 @@ class _SlotCard extends StatelessWidget {
                   style: const TextStyle(fontSize: 22, height: 1.4),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  slot.label,
-                  style: GoogleFonts.dmSans(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: selected ? AppColors.primary : careInk,
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    slot.label,
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: selected ? AppColors.primary : careInk,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  clock,
-                  style: GoogleFonts.dmSans(
-                    fontSize: 11,
-                    color: AppColors.onboardingBody,
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    clock,
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 11,
+                      color: AppColors.onboardingBody,
+                    ),
                   ),
                 ),
               ],

@@ -2,6 +2,7 @@ import { isSummaryTime, leadMinutes, localDayKey, wallNow, wallParts } from './c
 import { messaging } from './firebase.js';
 
 export async function dispatchReminders(admin, now = new Date(), sender = messaging()) {
+  await ensureMissingSettings(admin);
   const { data: settings, error } = await admin.from('user_settings').select('*');
   if (error) throw error;
   let sent = 0;
@@ -9,6 +10,28 @@ export async function dispatchReminders(admin, now = new Date(), sender = messag
     sent += await dispatchUser(admin, sender, setting, now);
   }
   return sent;
+}
+
+async function ensureMissingSettings(admin) {
+  const { data: profiles, error } = await admin.from('profiles').select('id');
+  if (error) throw error;
+  const { data: settings, error: settingsError } = await admin.from('user_settings').select('user_id');
+  if (settingsError) throw settingsError;
+  const have = new Set((settings ?? []).map((row) => row.user_id));
+  const missing = (profiles ?? []).filter((row) => !have.has(row.id));
+  if (!missing.length) return;
+  const rows = missing.map((row) => ({
+    user_id: row.id,
+    reminders: true,
+    overdue: true,
+    summary: true,
+    tips: false,
+    preferred_slot: 'morning',
+    lead: '30 min before',
+    utc_offset_minutes: 0,
+  }));
+  const { error: insertError } = await admin.from('user_settings').insert(rows);
+  if (insertError) console.error(insertError);
 }
 
 export async function dispatchForUser(admin, userId, now = new Date(), sender = messaging()) {

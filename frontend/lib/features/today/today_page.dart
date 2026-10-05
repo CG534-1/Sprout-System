@@ -232,7 +232,7 @@ class _TodayPageState extends State<TodayPage> {
         child: Stack(
           children: [
             ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 110),
+              padding: EdgeInsets.fromLTRB(20, 8, 20, CareNav.scrollClearance(context)),
               children: [
                 _Header(
                   firstName: first,
@@ -518,7 +518,6 @@ class _Hero extends StatelessWidget {
             : '$overdue are past their time. Mark them done, or skip.'
         : 'A little attention goes a long way.';
     return Container(
-      height: caughtUp ? 123 : 120,
       width: double.infinity,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -536,21 +535,23 @@ class _Hero extends StatelessWidget {
         children: [
           Positioned(
             right: -46,
-            top: caughtUp ? 12 : 10,
-            child: Container(
-              width: 158,
-              height: 158,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.22),
-                  width: 0.8,
+            top: 10,
+            child: IgnorePointer(
+              child: Container(
+                width: 158,
+                height: 158,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.22),
+                    width: 0.8,
+                  ),
                 ),
               ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(21, 21, 21, 16),
+            padding: const EdgeInsets.fromLTRB(21, 21, 21, 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -570,6 +571,7 @@ class _Hero extends StatelessWidget {
                   style: GoogleFonts.fraunces(
                     fontSize: 24,
                     fontWeight: FontWeight.w600,
+                    height: 1.15,
                     color: Colors.white.withValues(alpha: caughtUp ? 0.95 : 1),
                   ),
                 ),

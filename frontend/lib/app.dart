@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:sprout/core/layout/mobile_frame.dart';
+import 'package:sprout/core/notifications/push_service.dart';
 import 'package:sprout/core/router/app_router.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/theme/app_theme.dart';
@@ -35,6 +36,16 @@ class _SproutAppState extends State<SproutApp> with WidgetsBindingObserver {
     _ownsTheme = widget.theme == null;
     _theme = widget.theme ?? ThemeController();
     WidgetsBinding.instance.addObserver(this);
+    widget.services.auth.addListener(_syncPush);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncPush());
+  }
+
+  void _syncPush() {
+    if (!widget.services.auth.isSignedIn) {
+      PushService.reset();
+      return;
+    }
+    PushService.start(widget.services.profile);
   }
 
   @override
@@ -45,6 +56,7 @@ class _SproutAppState extends State<SproutApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    widget.services.auth.removeListener(_syncPush);
     WidgetsBinding.instance.removeObserver(this);
     _router.dispose();
     widget.services.dispose();

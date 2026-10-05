@@ -10,20 +10,21 @@ Future<void> sproutBackgroundMessage(RemoteMessage message) async {}
 class PushService {
   static var _started = false;
   static var _refreshBound = false;
+  static var _asked = false;
 
   static Future<void> start(ProfileService profile) async {
     try {
       final settings = await profile.settings();
-      if (settings.wantsPush) {
-        await enable(profile);
+      if (!settings.wantsPush) {
+        _listenRefresh(profile);
         return;
       }
     } catch (_) {}
-    final token = await _token(ask: !kIsWeb);
-    if (token != null) {
-      await profile.registerDevice(token: token, platform: _platform);
-    }
-    _listenRefresh(profile);
+    await enable(profile);
+  }
+
+  static void reset() {
+    _asked = false;
   }
 
   static Future<void> enable(ProfileService profile) async {
@@ -49,21 +50,30 @@ class PushService {
     if (!config.pushReady) return null;
     try {
       if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp(
-          options: FirebaseOptions(
-            apiKey: config.firebaseApiKey,
-            appId: config.firebaseAppId,
-            messagingSenderId: config.firebaseSenderId,
-            projectId: config.firebaseProjectId,
-          ),
-        );
+        // Android reads google-services.json. Passing the web app id here
+        // breaks FCM on the phone even when the project itself is correct.
+        if (kIsWeb) {
+          await Firebase.initializeApp(
+            options: FirebaseOptions(
+              apiKey: config.firebaseApiKey,
+              appId: config.firebaseAppId,
+              messagingSenderId: config.firebaseSenderId,
+              projectId: config.firebaseProjectId,
+            ),
+          );
+        } else {
+          await Firebase.initializeApp();
+        }
       }
       if (!_started && !kIsWeb) {
         FirebaseMessaging.onBackgroundMessage(sproutBackgroundMessage);
         _started = true;
       }
       final messaging = FirebaseMessaging.instance;
-      if (ask) await messaging.requestPermission();
+      if (ask && !_asked) {
+        _asked = true;
+        await messaging.requestPermission();
+      }
       final settings = await messaging.getNotificationSettings();
       final allowed =
           settings.authorizationStatus == AuthorizationStatus.authorized ||

@@ -100,7 +100,7 @@ class _MyCarePageState extends State<MyCarePage> {
         child: Stack(
           children: [
             ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 110),
+              padding: EdgeInsets.fromLTRB(20, 8, 20, CareNav.scrollClearance(context)),
               children: [
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -200,17 +200,24 @@ class _MyCarePageState extends State<MyCarePage> {
                     body: 'This filter is empty. The rest of your home is still on All.',
                   )
                 else
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: visible.length,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      mainAxisExtent: 208,
-                    ),
-                    itemBuilder: (context, index) => _Card(member: visible[index]),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final cardWidth = (constraints.maxWidth - 12) / 2;
+                      final extent = (cardWidth * 0.7 + 84).clamp(200.0, 228.0);
+                      return GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: visible.length,
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          mainAxisExtent: extent,
+                        ),
+                        itemBuilder: (context, index) =>
+                            _Card(member: visible[index]),
+                      );
+                    },
                   ),
               ],
             ),
@@ -385,9 +392,7 @@ class _Card extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              height: 126,
-              width: double.infinity,
+            Expanded(
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -430,7 +435,7 @@ class _Card extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(11, 5, 11, 0),
+              padding: const EdgeInsets.fromLTRB(11, 5, 11, 10),
               child: Text(
                 member.line,
                 maxLines: 1,

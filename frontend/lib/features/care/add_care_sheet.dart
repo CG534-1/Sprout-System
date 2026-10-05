@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/photo_picker.dart';
 import 'package:sprout/core/widgets/person_avatar.dart';
@@ -161,10 +160,6 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
   final _notesFocus = FocusNode();
   var _picking = false;
   Uint8List? _photo;
-  DateTime? _lastWatered;
-  DateTime? _lastFed;
-  DateTime? _lastBowl;
-  DateTime? _lastWalk;
 
   CareDraft? get _existing => widget.args.existing;
 
@@ -183,23 +178,6 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusManager.instance.primaryFocus?.unfocus();
     });
-    if (existing == null) return;
-    for (final schedule in existing.schedules) {
-      switch (schedule.action) {
-        case CareAction.water:
-          _lastWatered = schedule.lastDone;
-        case CareAction.feed:
-          _lastFed = schedule.lastDone;
-        case CareAction.waterBowl:
-          _lastBowl = schedule.lastDone;
-        case CareAction.walk:
-          _lastWalk = schedule.lastDone;
-        case CareAction.mist:
-        case CareAction.fertilize:
-        case CareAction.groom:
-          break;
-      }
-    }
   }
 
   @override
@@ -240,34 +218,11 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
       location: _location.text.trim(),
       notes: _notes.text.trim(),
       photo: _photo,
-      lastWatered: _lastWatered,
-      lastFed: _lastFed,
-      lastBowl: _lastBowl,
-      lastWalk: _lastWalk,
       existing: _existing,
     );
     final router = GoRouter.of(context);
     if (router.canPop()) router.pop();
     router.push(AppRoutes.schedule, extra: args);
-  }
-
-  Future<void> _pickDate(
-    DateTime? current,
-    void Function(DateTime date) assign,
-  ) async {
-    final today = DateTime.now();
-    final day = DateTime(today.year, today.month, today.day);
-    final initial = current == null
-        ? day
-        : DateTime(current.year, current.month, current.day);
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial.isAfter(day) ? day : initial,
-      firstDate: day.subtract(const Duration(days: 365)),
-      lastDate: day,
-    );
-    if (picked == null || !mounted) return;
-    setState(() => assign(DateTime(picked.year, picked.month, picked.day)));
   }
 
   Future<void> _pickPhoto(BuildContext from) async {
@@ -439,27 +394,6 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
           onSubmitted: (_) => _notesFocus.requestFocus(),
           onChanged: (_) => setState(() {}),
         ),
-        const CareLabel('WHEN LAST WATERED (OPTIONAL)'),
-        CareWhenField(
-          value: _lastWatered,
-          onTap: () => _pickDate(_lastWatered, (date) => _lastWatered = date),
-        ),
-      ] else ...[
-        const CareLabel('WHEN LAST FED (OPTIONAL)'),
-        CareWhenField(
-          value: _lastFed,
-          onTap: () => _pickDate(_lastFed, (date) => _lastFed = date),
-        ),
-        const CareLabel('WHEN WAS THE WATER BOWL LAST REFILLED (OPTIONAL)'),
-        CareWhenField(
-          value: _lastBowl,
-          onTap: () => _pickDate(_lastBowl, (date) => _lastBowl = date),
-        ),
-        const CareLabel('WHEN LAST WALKED (OPTIONAL)'),
-        CareWhenField(
-          value: _lastWalk,
-          onTap: () => _pickDate(_lastWalk, (date) => _lastWalk = date),
-        ),
       ],
       const CareLabel('NOTES'),
       CareNameField(
@@ -470,37 +404,5 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
         onChanged: (_) => setState(() {}),
       ),
     ];
-  }
-}
-
-class CareWhenField extends StatelessWidget {
-  const CareWhenField({super.key, required this.value, required this.onTap});
-
-  final DateTime? value;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final picked = value != null;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 48,
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          color: careField,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.dotIdle, width: 0.8),
-        ),
-        child: Text(
-          picked ? DateFormat('MMM d, y').format(value!) : 'Pick a date',
-          style: GoogleFonts.dmSans(
-            fontSize: 14,
-            color: picked ? careInk : AppColors.onboardingBody,
-          ),
-        ),
-      ),
-    );
   }
 }

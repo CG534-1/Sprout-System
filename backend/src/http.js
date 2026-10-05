@@ -85,10 +85,7 @@ export function createApp() {
       }
       req.user = data.user;
       req.admin = admin;
-      await admin
-        .from('user_settings')
-        .update({ utc_offset_minutes: utcOffsetMinutes(req) })
-        .eq('user_id', data.user.id);
+      await ensureSettings(admin, data.user.id, utcOffsetMinutes(req));
       req.db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
         accessToken: async () => token,
         auth: { persistSession: false, autoRefreshToken: false },
@@ -136,12 +133,7 @@ export function createApp() {
 
   app.get('/api/me/settings', async (req, res, next) => {
     try {
-      var { data, error } = await req.db
-          .from('user_settings')
-          .select('*')
-          .eq('user_id', req.user.id)
-          .maybeSingle();
-      if (error) throw error;
+      const data = await ensureSettings(req.admin, req.user.id, utcOffsetMinutes(req));
       res.json(settingsJson(data));
     } catch (error) {
       next(error);
@@ -685,6 +677,70 @@ async function dispatchNow(admin, userId) {
   } catch (error) {
     console.error(error);
   }
+}
+
+async function ensureSettings(admin, userId, offsetMinutes = 0) {
+  const { data: existing, error } = await admin
+    .from('user_settings')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (existing) {
+    if (existing.utc_offset_minutes !== offsetMinutes) {
+      const { data, error: updateError } = await admin
+        .from('user_settings')
+        .update({ utc_offset_minutes: offsetMinutes })
+        .eq('user_id', userId)
+        .select('*')
+        .single();
+      if (updateError) throw updateError;
+      return data;
+    }
+    return existing;
+  }
+  const { data, error: insertError } = await admin
+    .from('user_settings')
+    .insert({
+      user_id: userId,
+      reminders: true,
+      overdue: true,
+      summary: true,
+      tips: false,
+      preferred_slot: 'morning',
+      lead: '30 min before',
+      utc_offset_minutes: offsetMinutes,
+      slot_hours: {},
+    })
+    .select('*')
+    .single();
+  if (insertError) {
+    // Signup can hit /api before a profile row exists.
+    if (insertError.code === '23503') return null;
+    if (missingColumn(insertError, 'slot_hours')) {
+      const retry = await admin
+        .from('user_settings')
+        .insert({
+          user_id: userId,
+          reminders: true,
+          overdue: true,
+          summary: true,
+          tips: false,
+          preferred_slot: 'morning',
+          lead: '30 min before',
+          utc_offset_minutes: offsetMinutes,
+        })
+        .select('*')
+        .single();
+      if (retry.error) {
+        if (retry.error.code === '23503') return null;
+        throw retry.error;
+      }
+      return retry.data;
+    }
+    throw insertError;
+  }
+  return data;
 }
 
 async function upsertSettings(db, patch) {
