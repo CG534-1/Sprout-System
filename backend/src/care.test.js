@@ -35,6 +35,21 @@ test('a missed morning slot moves to the next interval', () => {
   assert.equal(due, '2026-10-01T09:00:00.000Z');
 });
 
+test('a late-night custom clock lands tonight, not this morning', () => {
+  const now = new Date('2026-10-04T23:56:00.000Z');
+  const due = nextDue(
+    {
+      frequency: 'daily',
+      reminders: ['evening'],
+      weekdays: [],
+      slotHours: { evening: { hour: 0, minute: 8 } },
+    },
+    0,
+    now,
+  );
+  assert.equal(due, '2026-10-05T00:08:00.000Z');
+});
+
 test('a new plan still starts today after the reminder hour', () => {
   const now = new Date('2026-09-30T22:00:00.000Z');
   const due = nextDue(

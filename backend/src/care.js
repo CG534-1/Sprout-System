@@ -171,6 +171,23 @@ function atWall(year, month, day, clock, offsetMinutes) {
   return wallToUtc(year, month, day, clock.hour, offsetMinutes, clock.minute);
 }
 
+function startClock(current, clock, offsetMinutes, now) {
+  const todayAt = atWall(current.year, current.month, current.day, clock, offsetMinutes);
+  if (todayAt.getTime() >= now.getTime()) return todayAt;
+  const rolled = new Date(Date.UTC(current.year, current.month - 1, current.day + 1));
+  const tomorrowAt = atWall(
+    rolled.getUTCFullYear(),
+    rolled.getUTCMonth() + 1,
+    rolled.getUTCDate(),
+    clock,
+    offsetMinutes,
+  );
+  // A 12:08 AM feed set at 11:56 PM is tonight, not this morning.
+  if (tomorrowAt.getTime() - now.getTime() <= 3 * 60 * 60 * 1000) return tomorrowAt;
+  // An evening add after 6 still keeps today so Home is not blank.
+  return todayAt;
+}
+
 export function nextDue(entry, offsetMinutes, now = new Date()) {
   const hours = entryHours(entry);
   const wall = wallNow(offsetMinutes, now);
@@ -188,8 +205,7 @@ export function nextDue(entry, offsetMinutes, now = new Date()) {
     const instant = asInstant(fromLast);
     if (instant.getTime() >= now.getTime()) return instant.toISOString();
   } else if (entry.frequency !== 'setDays' || entry.weekdays?.includes(current.weekday)) {
-    // A new plan starts today so Home is not blank after an evening add.
-    return atWall(current.year, current.month, current.day, clock, offsetMinutes).toISOString();
+    return startClock(current, clock, offsetMinutes, now).toISOString();
   }
 
   if (entry.frequency === 'setDays' && entry.weekdays?.length) {

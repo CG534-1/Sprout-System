@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { dispatchReminders } from './dispatch.js';
+import { dispatchForUser, dispatchReminders } from './dispatch.js';
 
 function createAdmin({ settings = [], tokens = [], tasks = [], schedules = [] } = {}) {
   const store = {
@@ -45,6 +45,13 @@ function createAdmin({ settings = [], tokens = [], tasks = [], schedules = [] } 
             },
           };
         },
+        maybeSingle() {
+          let data = store[table];
+          for (const [column, value] of filters) {
+            data = data.filter((row) => row[column] === value);
+          }
+          return Promise.resolve({ data: data[0] ?? null, error: null });
+        },
         then(resolve, reject) {
           let data = store[table];
           for (const [column, value] of filters) {
@@ -78,14 +85,32 @@ const setting = {
   preferred_slot: 'morning',
 };
 
-test('dispatch does nothing without a sender or device token', async () => {
+test('dispatch still writes the bell without a device token', async () => {
   const admin = createAdmin({
     settings: [setting],
     tokens: [],
     tasks: [{ id: 't1', user_id: 'user-1', status: 'due', due_at: '2026-10-04T09:00:00.000Z', action: 'walk', subject_name: 'Milo' }],
   });
-  assert.equal(await dispatchReminders(admin, new Date('2026-10-04T08:50:00.000Z'), senderOk()), 0);
+  assert.equal(await dispatchReminders(admin, new Date('2026-10-04T08:50:00.000Z'), senderOk()), 1);
+  assert.equal(admin.store.push_notifications[0].title, 'Care reminder');
   assert.equal(await dispatchReminders(admin, new Date('2026-10-04T08:50:00.000Z'), null), 0);
+});
+
+test('saving a care in the lead window notifies that user now', async () => {
+  const admin = createAdmin({
+    settings: [setting],
+    tokens: [{ user_id: 'user-1', token: 'tok-1' }],
+    tasks: [{
+      id: 't1',
+      user_id: 'user-1',
+      status: 'due',
+      due_at: '2026-10-05T00:15:00.000Z',
+      action: 'feed',
+      subject_name: 'Milo',
+    }],
+  });
+  assert.equal(await dispatchForUser(admin, 'user-1', new Date('2026-10-05T00:00:00.000Z'), senderOk()), 1);
+  assert.equal(admin.store.push_notifications[0].title, 'Care reminder');
 });
 
 test('a due task in the lead window sends a reminder once', async () => {
@@ -151,7 +176,7 @@ test('daily summary sends at 8:45 local, not the care preference slot', async ()
   assert.equal(await dispatchReminders(admin, new Date('2026-10-04T18:00:00.000Z'), senderOk()), 0);
 });
 
-test('stale device tokens are dropped and do not count as sent', async () => {
+test('stale device tokens are dropped and the bell still records the note', async () => {
   const admin = createAdmin({
     settings: [setting],
     tokens: [{ user_id: 'user-1', token: 'dead' }],
@@ -170,7 +195,7 @@ test('stale device tokens are dropped and do not count as sent', async () => {
       responses: [{ error: { code: 'messaging/registration-token-not-registered' } }],
     }),
   };
-  assert.equal(await dispatchReminders(admin, new Date('2026-10-04T08:50:00.000Z'), sender), 0);
+  assert.equal(await dispatchReminders(admin, new Date('2026-10-04T08:50:00.000Z'), sender), 1);
   assert.equal(admin.store.device_tokens.length, 0);
-  assert.equal(admin.store.push_notifications.length, 0);
+  assert.equal(admin.store.push_notifications.length, 1);
 });

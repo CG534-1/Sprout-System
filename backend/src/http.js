@@ -11,7 +11,7 @@ import {
   upcomingOnNextDay,
   utcOffsetMinutes,
 } from './care.js';
-import { dispatchReminders } from './dispatch.js';
+import { dispatchForUser, dispatchReminders } from './dispatch.js';
 import { lookupSignupEmail } from './signup.js';
 
 const bucket = 'care-media';
@@ -172,6 +172,7 @@ export function createApp() {
       const data = await upsertSettings(req.db, patch);
       if (clocksChanged) {
         await rebuildOpenTasks(req.db, req.user.id, offset, slotHours);
+        await dispatchNow(req.admin, req.user.id);
       }
       res.json(settingsJson(data));
     } catch (error) {
@@ -453,6 +454,7 @@ export function createApp() {
           if (taskError) throw taskError;
         }
       }
+      await dispatchNow(req.admin, req.user.id);
       res.status(204).end();
     } catch (error) {
       next(error);
@@ -675,6 +677,14 @@ function preferredSlotsFrom(value) {
 function missingColumn(error, column) {
   const text = `${error?.message ?? ''} ${error?.details ?? ''} ${error?.hint ?? ''} ${error?.code ?? ''}`;
   return text.includes(column) || error?.code === 'PGRST204' || error?.code === '42703';
+}
+
+async function dispatchNow(admin, userId) {
+  try {
+    await dispatchForUser(admin, userId);
+  } catch (error) {
+    console.error(error);
+  }
 }
 
 async function upsertSettings(db, patch) {

@@ -11,6 +11,17 @@ export async function dispatchReminders(admin, now = new Date(), sender = messag
   return sent;
 }
 
+export async function dispatchForUser(admin, userId, now = new Date(), sender = messaging()) {
+  const { data: setting, error } = await admin
+    .from('user_settings')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!setting) return 0;
+  return dispatchUser(admin, sender, setting, now);
+}
+
 async function dispatchUser(admin, sender, setting, now) {
   const offsetMinutes = Number(setting.utc_offset_minutes) || 0;
   const { data: tokens } = await admin
@@ -18,7 +29,6 @@ async function dispatchUser(admin, sender, setting, now) {
     .select('token')
     .eq('user_id', setting.user_id);
   const targets = (tokens ?? []).map((row) => row.token);
-  if (!targets.length || !sender) return 0;
 
   const { data: tasks } = await admin
     .from('care_tasks')
@@ -98,27 +108,29 @@ function label(action) {
 
 async function send(sender, admin, userId, tokens, note) {
   try {
-    const response = await sender.sendEachForMulticast({
-      tokens,
-      notification: note,
-    });
-    const stale = [];
-    response.responses.forEach((item, index) => {
-      const code = item.error?.code;
-      if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token') {
-        stale.push(tokens[index]);
-      }
-    });
-    if (stale.length) await admin.from('device_tokens').delete().in('token', stale);
-    if (response.successCount > 0) {
-      await admin.from('push_notifications').insert({
-        user_id: userId,
-        title: note.title,
-        body: note.body,
+    if (sender && tokens.length) {
+      const response = await sender.sendEachForMulticast({
+        tokens,
+        notification: note,
       });
-      return true;
+      const stale = [];
+      response.responses.forEach((item, index) => {
+        const code = item.error?.code;
+        if (
+          code === 'messaging/registration-token-not-registered' ||
+          code === 'messaging/invalid-registration-token'
+        ) {
+          stale.push(tokens[index]);
+        }
+      });
+      if (stale.length) await admin.from('device_tokens').delete().in('token', stale);
     }
-    return false;
+    await admin.from('push_notifications').insert({
+      user_id: userId,
+      title: note.title,
+      body: note.body,
+    });
+    return true;
   } catch (error) {
     console.error(error);
     return false;
