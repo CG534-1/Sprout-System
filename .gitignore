@@ -1,4 +1,28 @@
-backend/node_modules/
+# Local secrets and env
 backend/.env
-frontend/android/app/google-services.json
+backend/.env.*
+!backend/.env.example
 frontend/dart-defines.local.json
+frontend/dart-defines*.local.json
+frontend/android/app/google-services.json
+**/google-services.json
+**/GoogleService-Info.plist
+
+# Service accounts / keys
+**/*serviceAccount*.json
+**/*service-account*.json
+**/*credentials*.json
+**/*.pem
+**/*.p12
+**/*.key
+**/secrets/
+*.keystore
+*.jks
+
+# Local Firebase / FCM helper (reads machine tokens — do not commit)
+scripts/setup-fcm-env.mjs
+
+# Dependencies and build
+backend/node_modules/
+frontend/build/
+frontend/.dart_tool/
