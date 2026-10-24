@@ -3,7 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
@@ -13,10 +14,6 @@ import 'package:sprout/data/models/care_schedule.dart';
 import 'package:sprout/data/models/slot_hours.dart';
 import 'package:sprout/data/models/pet.dart';
 import 'package:sprout/data/models/plant.dart';
-import 'package:sprout/data/services/care_service.dart';
-import 'package:sprout/data/services/pet_service.dart';
-import 'package:sprout/data/services/plant_service.dart';
-import 'package:sprout/data/services/profile_service.dart';
 import 'package:sprout/features/care/add_care_sheet.dart';
 import 'package:sprout/features/care/care_sheet.dart';
 
@@ -43,16 +40,16 @@ class CareScheduleArgs {
   final CareDraft? existing;
 }
 
-class CareSchedulePage extends StatefulWidget {
+class CareSchedulePage extends ConsumerStatefulWidget {
   const CareSchedulePage({super.key, required this.args});
 
   final CareScheduleArgs args;
 
   @override
-  State<CareSchedulePage> createState() => _CareSchedulePageState();
+  ConsumerState<CareSchedulePage> createState() => _CareSchedulePageState();
 }
 
-class _CareSchedulePageState extends State<CareSchedulePage> {
+class _CareSchedulePageState extends ConsumerState<CareSchedulePage> {
   late final TextEditingController _everyDays;
   late final TextEditingController _bowlEveryDays;
   late final TextEditingController _walkEveryDays;
@@ -77,6 +74,7 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
   String? _walkLead;
   var _accountLead = '30 min before';
   var _accountClocks = SlotHours.defaults;
+  var _defaultsApplied = false;
   final _waterClocks = <CareSlot, TimeOfDay>{};
   final _feedClocks = <CareSlot, TimeOfDay>{};
   final _bowlClocks = <CareSlot, TimeOfDay>{};
@@ -157,10 +155,13 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
     super.dispose();
   }
 
-  Future<void> _loadAccountDefaults() async {
-    try {
-      final settings = await context.read<ProfileService>().settings();
-      if (!mounted) return;
+  void _loadAccountDefaults() {
+    // Shares Profile's copy of the settings. A failed load leaves the
+    // per-schedule default at 30 minutes and 9 / 1 / 6.
+    ref.listenManual(careSettingsProvider, (previous, next) {
+      final settings = next.value;
+      if (settings == null || _defaultsApplied || !mounted) return;
+      _defaultsApplied = true;
       setState(() {
         _accountLead = settings.lead;
         _accountClocks = settings.slotHours;
@@ -177,9 +178,7 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
           }
         }
       });
-    } on AppException {
-      // The per-schedule default just stays at 30 minutes and 9 / 1 / 6.
-    }
+    }, fireImmediately: true);
   }
 
   SlotHours _clocksFor(Map<CareSlot, TimeOfDay> overrides) {
@@ -254,9 +253,9 @@ class _CareSchedulePageState extends State<CareSchedulePage> {
     final args = widget.args;
     final existing = args.existing;
     final entries = _entries();
-    final plants = context.read<PlantService>();
-    final pets = context.read<PetService>();
-    final care = context.read<CareService>();
+    final plants = ref.read(plantServiceProvider);
+    final pets = ref.read(petServiceProvider);
+    final care = ref.read(careServiceProvider);
     final toast = sproutToaster(context);
     try {
       final String id;

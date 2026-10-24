@@ -2,21 +2,21 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/widgets/sprout_check.dart';
-import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/auth_widgets.dart';
 import 'package:sprout/features/splash/splash_cup.dart';
 
-class OnboardingPage extends StatefulWidget {
+class OnboardingPage extends ConsumerStatefulWidget {
   const OnboardingPage({super.key, this.markKey, this.showMark = true});
 
   final Key? markKey;
   final bool showMark;
 
   @override
-  State<OnboardingPage> createState() => _OnboardingPageState();
+  ConsumerState<OnboardingPage> createState() => _OnboardingPageState();
 }
 
 class _Slide {
@@ -61,7 +61,7 @@ const _slides = [
   ),
 ];
 
-class _OnboardingPageState extends State<OnboardingPage> {
+class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   static const _beat = Duration(milliseconds: 3200);
   static const _fade = Duration(milliseconds: 1400);
 
@@ -85,7 +85,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   void _start() {
     _timer?.cancel();
-    context.read<AuthService>().completeOnboarding();
+    ref.read(authServiceProvider).completeOnboarding();
   }
 
   @override

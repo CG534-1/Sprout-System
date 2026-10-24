@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum SproutAppearance { light, dark, system }
@@ -68,33 +68,42 @@ class SproutPalette {
   );
 }
 
-class ThemeController extends ChangeNotifier {
-  SproutAppearance appearance = SproutAppearance.light;
-
-  static const _key = 'sprout.appearance';
-
-  ThemeMode get themeMode => switch (appearance) {
+extension SproutAppearanceLabels on SproutAppearance {
+  ThemeMode get themeMode => switch (this) {
     SproutAppearance.light => ThemeMode.light,
     SproutAppearance.dark => ThemeMode.dark,
     SproutAppearance.system => ThemeMode.system,
   };
 
-  String get label => switch (appearance) {
+  String get label => switch (this) {
     SproutAppearance.light => 'Light',
     SproutAppearance.dark => 'Dark',
     SproutAppearance.system => 'System',
   };
+}
 
-  Future<void> load() async {
+final themeControllerProvider =
+    NotifierProvider<ThemeController, SproutAppearance>(ThemeController.new);
+
+class ThemeController extends Notifier<SproutAppearance> {
+  ThemeController([this._initial = SproutAppearance.light]);
+
+  final SproutAppearance _initial;
+
+  static const _key = 'sprout.appearance';
+
+  @override
+  SproutAppearance build() => _initial;
+
+  /// Reads the stored appearance before the first frame, so launch does not
+  /// flash the light theme.
+  static Future<SproutAppearance> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getString(_key);
-    if (stored == null) return;
-    appearance = switch (stored) {
+    return switch (prefs.getString(_key)) {
       'dark' => SproutAppearance.dark,
       'system' => SproutAppearance.system,
       _ => SproutAppearance.light,
     };
-    notifyListeners();
   }
 
   void select(String label) {
@@ -103,9 +112,8 @@ class ThemeController extends ChangeNotifier {
       'System' => SproutAppearance.system,
       _ => SproutAppearance.light,
     };
-    if (next == appearance) return;
-    appearance = next;
-    notifyListeners();
+    if (next == state) return;
+    state = next;
     SharedPreferences.getInstance().then((prefs) => prefs.setString(_key, next.name));
   }
 }

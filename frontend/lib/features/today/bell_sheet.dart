@@ -3,10 +3,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/data/models/push_note.dart';
-import 'package:sprout/data/services/profile_service.dart';
+import 'package:sprout/features/today/today_providers.dart';
 
 Future<void> showBellSheet(BuildContext context) {
   return showGeneralDialog<void>(
@@ -39,39 +39,12 @@ Future<void> showBellSheet(BuildContext context) {
   );
 }
 
-class _BellPanel extends StatefulWidget {
+class _BellPanel extends ConsumerWidget {
   const _BellPanel();
 
   @override
-  State<_BellPanel> createState() => _BellPanelState();
-}
-
-class _BellPanelState extends State<_BellPanel> {
-  List<PushNote> _notes = const [];
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-  }
-
-  Future<void> _load() async {
-    final profile = context.read<ProfileService>();
-    List<PushNote> notes = const [];
-    try {
-      notes = await profile.notifications();
-      if (notes.any((note) => !note.read)) {
-        await profile.markNotificationsRead();
-      }
-    } catch (_) {
-      notes = const [];
-    }
-    if (!mounted) return;
-    setState(() => _notes = notes);
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notes = ref.watch(bellNotesProvider).value ?? const <PushNote>[];
     return SafeArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -99,12 +72,12 @@ class _BellPanelState extends State<_BellPanel> {
           ),
           Divider(height: 1, color: AppColors.dotIdle),
           Expanded(
-            child: _notes.isEmpty
+            child: notes.isEmpty
                 ? const _EmptyNotes()
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(22, 16, 22, 24),
                     children: [
-                      for (final note in _notes) ...[
+                      for (final note in notes) ...[
                         _NoteRow(note: note),
                         const SizedBox(height: 10),
                       ],

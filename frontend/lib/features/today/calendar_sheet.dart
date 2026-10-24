@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/data/models/care_enums.dart';
 import 'package:sprout/data/models/care_task.dart';
-import 'package:sprout/data/services/care_service.dart';
+import 'package:sprout/features/today/today_providers.dart';
 
 
 Future<void> showCalendarSheet(BuildContext context) {
@@ -17,43 +18,27 @@ Future<void> showCalendarSheet(BuildContext context) {
   );
 }
 
-class _CalendarSheet extends StatefulWidget {
+class _CalendarSheet extends HookConsumerWidget {
   const _CalendarSheet();
 
   @override
-  State<_CalendarSheet> createState() => _CalendarSheetState();
-}
-
-class _CalendarSheetState extends State<_CalendarSheet> {
-  late final List<DateTime> _days;
-  late DateTime _selected;
-  List<CareTask> _tasks = [];
-
-  @override
-  void initState() {
-    super.initState();
+  Widget build(BuildContext context, WidgetRef ref) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    _days = List.generate(7, (index) => today.add(Duration(days: index)));
-    _selected = today;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-  }
-
-  Future<void> _load() async {
-    final tasks = await context.read<CareService>().tasksFor(_selected);
-    if (!mounted) return;
-    setState(() {
-      _tasks = tasks..sort((a, b) => a.dueAt.compareTo(b.dueAt));
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final heading = DateUtils.isSameDay(_selected, today)
-        ? 'Today · ${DateFormat('EEE, MMM d').format(_selected)}'
-        : DateFormat('EEE, MMM d').format(_selected);
+    final days = useMemoized(
+      () => List.generate(7, (index) => today.add(Duration(days: index))),
+    );
+    final selected = useState(today);
+    final picked = selected.value;
+    // The last day that finished loading stays up while the next one loads,
+    // so switching days does not blink "Nothing scheduled".
+    final shown = useRef(const <CareTask>[]);
+    final loaded = ref.watch(calendarTasksProvider(picked)).value;
+    if (loaded != null) shown.value = loaded;
+    final tasks = shown.value;
+    final heading = DateUtils.isSameDay(picked, today)
+        ? 'Today · ${DateFormat('EEE, MMM d').format(picked)}'
+        : DateFormat('EEE, MMM d').format(picked);
 
     return Column(
       children: [
@@ -121,15 +106,12 @@ class _CalendarSheetState extends State<_CalendarSheet> {
               const SizedBox(height: 16),
               Row(
                 children: [
-                  for (final day in _days)
+                  for (final day in days)
                     Expanded(
                       child: _DayChip(
                         day: day,
-                        selected: DateUtils.isSameDay(day, _selected),
-                        onTap: () {
-                          setState(() => _selected = day);
-                          _load();
-                        },
+                        selected: DateUtils.isSameDay(day, picked),
+                        onTap: () => selected.value = day,
                       ),
                     ),
                 ],
@@ -148,7 +130,7 @@ class _CalendarSheetState extends State<_CalendarSheet> {
                 ),
               ),
               const SizedBox(height: 12),
-              if (_tasks.isEmpty)
+              if (tasks.isEmpty)
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Padding(
@@ -163,7 +145,7 @@ class _CalendarSheetState extends State<_CalendarSheet> {
                   ),
                 )
               else
-                for (final task in _tasks) ...[
+                for (final task in tasks) ...[
                   _CalendarTask(task: task),
                   const SizedBox(height: 8),
                 ],

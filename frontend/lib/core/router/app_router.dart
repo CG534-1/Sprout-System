@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sprout/core/router/routes.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/forgot_password_page.dart';
 import 'package:sprout/features/auth/otp_page.dart';
@@ -17,10 +19,56 @@ import 'package:sprout/features/profile/update_details_page.dart';
 import 'package:sprout/features/splash/splash_page.dart';
 import 'package:sprout/features/today/today_page.dart';
 
-GoRouter createAppRouter(AuthService auth) {
+final routerProvider = Provider<GoRouter>((ref) {
+  final auth = ref.watch(authServiceProvider);
+  final refresh = _RoutingRefresh(auth);
+  final router = createAppRouter(auth, refresh);
+  ref.onDispose(() {
+    router.dispose();
+    refresh.dispose();
+  });
+  return router;
+});
+
+/// Passes on only the auth changes that [_redirect] reads.
+///
+/// Auth also notifies for a new name or avatar. Refreshing the router for
+/// those re-reads the route stack, and when that lands just after a pop it
+/// puts the closed page back.
+class _RoutingRefresh extends ChangeNotifier {
+  _RoutingRefresh(this._auth) : _last = _routing(_auth) {
+    _auth.addListener(_changed);
+  }
+
+  final AuthService _auth;
+  Object _last;
+
+  static Object _routing(AuthService auth) => (
+    auth.splashSeen,
+    auth.pastOnboarding,
+    auth.resettingPassword,
+    auth.pendingSignup,
+    auth.isSignedIn,
+  );
+
+  void _changed() {
+    final next = _routing(_auth);
+    if (next == _last) return;
+    _last = next;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _auth.removeListener(_changed);
+    super.dispose();
+  }
+}
+
+GoRouter createAppRouter(AuthService auth, Listenable refresh) {
   return GoRouter(
     initialLocation: AppRoutes.splash,
-    refreshListenable: auth,
+    refreshListenable: refresh,
     redirect: (context, state) => _redirect(auth, state.matchedLocation),
     routes: [
       GoRoute(path: '/', redirect: (context, state) => AppRoutes.splash),

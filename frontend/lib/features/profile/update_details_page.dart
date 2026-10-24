@@ -1,16 +1,18 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:sprout/data/models/user_profile.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/photo_picker.dart';
 import 'package:sprout/core/widgets/person_avatar.dart';
 import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
-import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/auth_validators.dart';
 import 'package:sprout/features/auth/auth_widgets.dart';
 import 'package:sprout/features/care/care_sheet.dart';
@@ -26,130 +28,117 @@ const _avatars = [
   'assets/images/memoji_curls.png',
 ];
 
-class UpdateDetailsPage extends StatefulWidget {
-  const UpdateDetailsPage({super.key});
-
-  @override
-  State<UpdateDetailsPage> createState() => _UpdateDetailsPageState();
-}
-
-class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
-  late final TextEditingController _name;
-  late final TextEditingController _email;
-  var _avatar = -1;
-  Uint8List? _photo;
-  var _keepRemoteAvatar = false;
-  var _saving = false;
-  String? _nameError;
-  String? _emailError;
-
-  @override
-  void initState() {
-    super.initState();
-    final user = context.read<AuthService>().currentUser;
-    _name = TextEditingController(text: user?.name ?? '');
-    _email = TextEditingController(text: user?.email ?? '');
-    _photo = user?.avatarBytes;
+/// How the page opens: the avatar the account already has.
+class _StartingAvatar {
+  _StartingAvatar(UserProfile? user) : photo = user?.avatarBytes {
     final url = user?.avatarUrl;
     final index = _avatars.indexOf(url ?? '');
-    if (_photo == null && index >= 0) {
-      _avatar = index;
-    } else if (_photo == null &&
+    if (photo == null && index >= 0) {
+      avatar = index;
+    } else if (photo == null &&
         url != null &&
         url.isNotEmpty &&
         !url.startsWith('assets/')) {
-      _keepRemoteAvatar = true;
+      keepRemote = true;
     }
   }
 
-  @override
-  void dispose() {
-    _name.dispose();
-    _email.dispose();
-    super.dispose();
-  }
+  final Uint8List? photo;
+  var avatar = -1;
+  var keepRemote = false;
+}
 
-  Future<void> _pickAvatar() async {
-    final picked = await showModalBottomSheet<_AvatarChoice>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) =>
-          _AvatarSheet(selected: _photo == null ? _avatar : -1, photo: _photo),
-    );
-    if (picked == null || !mounted) return;
-    setState(() {
+class UpdateDetailsPage extends HookConsumerWidget {
+  const UpdateDetailsPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Read once: the form starts from the account and then belongs to the person.
+    final user = useMemoized(() => ref.read(authServiceProvider).currentUser);
+    final starting = useMemoized(() => _StartingAvatar(user));
+    final name = useTextEditingController(text: user?.name ?? '');
+    final email = useTextEditingController(text: user?.email ?? '');
+    final avatar = useState(starting.avatar);
+    final photo = useState(starting.photo);
+    final keepRemoteAvatar = useState(starting.keepRemote);
+    final saving = useState(false);
+    final nameError = useState<String?>(null);
+    final emailError = useState<String?>(null);
+
+    Future<void> pickAvatar() async {
+      final picked = await showModalBottomSheet<_AvatarChoice>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => _AvatarSheet(
+          selected: photo.value == null ? avatar.value : -1,
+          photo: photo.value,
+        ),
+      );
+      if (picked == null || !context.mounted) return;
       if (picked.bytes != null) {
-        _photo = picked.bytes;
-        _keepRemoteAvatar = false;
+        photo.value = picked.bytes;
       } else {
-        _photo = null;
-        _avatar = picked.index;
-        _keepRemoteAvatar = false;
+        photo.value = null;
+        avatar.value = picked.index;
       }
-    });
-  }
-
-  Future<void> _save() async {
-    final nameError = _name.text.trim().isEmpty ? 'Enter your name.' : null;
-    final emailError = validateEmail(_email.text);
-    setState(() {
-      _nameError = nameError;
-      _emailError = emailError;
-    });
-    if (nameError != null || emailError != null || _saving) return;
-    setState(() => _saving = true);
-    final auth = context.read<AuthService>();
-    final previous = auth.currentUser?.email ?? '';
-    final next = _email.text.trim();
-    final changing = next.toLowerCase() != previous.toLowerCase();
-    final avatarUrl = _photo == null && !_keepRemoteAvatar
-        ? (_avatar >= 0 ? _avatars[_avatar] : '')
-        : null;
-    final toast = sproutToaster(context);
-    try {
-      await auth.updateDetails(
-        name: _name.text,
-        email: changing ? previous : next,
-        avatarUrl: avatarUrl,
-        avatarBytes: _photo,
-      );
-      if (!mounted) return;
-      if (!changing) {
-        toast.show('Your details are saved.');
-        context.pop();
-        return;
-      }
-      await auth.requestEmailChange(email: next);
-      if (!mounted) return;
-      setState(() => _saving = false);
-      toast.show('We sent a code to $next.');
-      final ok = await context.push<bool>(
-        '${AppRoutes.verifyEmail}?email=${Uri.encodeQueryComponent(next)}&current=${Uri.encodeQueryComponent(previous)}&purpose=email_change',
-      );
-      if (!mounted || ok != true) return;
-      setState(() => _saving = true);
-      await auth.updateDetails(
-        name: _name.text,
-        email: next,
-        avatarUrl: avatarUrl,
-        avatarBytes: _photo,
-      );
-      if (!mounted) return;
-      toast.show('Your email is now $next.');
-      context.pop();
-    } on AppException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _emailError = error.message;
-        _saving = false;
-      });
-      toast.show(error.message, error: true);
+      keepRemoteAvatar.value = false;
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
+    Future<void> save() async {
+      final nameFailure = name.text.trim().isEmpty ? 'Enter your name.' : null;
+      final emailFailure = validateEmail(email.text);
+      nameError.value = nameFailure;
+      emailError.value = emailFailure;
+      if (nameFailure != null || emailFailure != null || saving.value) return;
+      saving.value = true;
+      final auth = ref.read(authServiceProvider);
+      final previous = auth.currentUser?.email ?? '';
+      final next = email.text.trim();
+      final changing = next.toLowerCase() != previous.toLowerCase();
+      final avatarUrl = photo.value == null && !keepRemoteAvatar.value
+          ? (avatar.value >= 0 ? _avatars[avatar.value] : '')
+          : null;
+      final toast = sproutToaster(context);
+      try {
+        await auth.updateDetails(
+          name: name.text,
+          email: changing ? previous : next,
+          avatarUrl: avatarUrl,
+          avatarBytes: photo.value,
+        );
+        if (!context.mounted) return;
+        if (!changing) {
+          toast.show('Your details are saved.');
+          context.pop();
+          return;
+        }
+        await auth.requestEmailChange(email: next);
+        if (!context.mounted) return;
+        saving.value = false;
+        toast.show('We sent a code to $next.');
+        final ok = await context.push<bool>(
+          '${AppRoutes.verifyEmail}?email=${Uri.encodeQueryComponent(next)}&current=${Uri.encodeQueryComponent(previous)}&purpose=email_change',
+        );
+        if (!context.mounted || ok != true) return;
+        saving.value = true;
+        await auth.updateDetails(
+          name: name.text,
+          email: next,
+          avatarUrl: avatarUrl,
+          avatarBytes: photo.value,
+        );
+        if (!context.mounted) return;
+        toast.show('Your email is now $next.');
+        context.pop();
+      } on AppException catch (error) {
+        if (!context.mounted) return;
+        emailError.value = error.message;
+        saving.value = false;
+        toast.show(error.message, error: true);
+      }
+    }
+
     return Scaffold(
       backgroundColor: AppColors.onboardingPaper,
       resizeToAvoidBottomInset: false,
@@ -188,7 +177,7 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
                     ),
                     const SizedBox(height: 22),
                     GestureDetector(
-                      onTap: _pickAvatar,
+                      onTap: pickAvatar,
                       child: Row(
                         children: [
                           ClipOval(
@@ -198,17 +187,14 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
                               child: ColoredBox(
                                 color: AppColors.field,
                                 child: PersonAvatar(
-                                  name: _name.text,
-                                  avatarBytes: _photo,
-                                  avatarUrl: _photo != null
+                                  name: name.text,
+                                  avatarBytes: photo.value,
+                                  avatarUrl: photo.value != null
                                       ? null
-                                      : _keepRemoteAvatar
-                                      ? context
-                                            .read<AuthService>()
-                                            .currentUser
-                                            ?.avatarUrl
-                                      : _avatar >= 0
-                                      ? _avatars[_avatar]
+                                      : keepRemoteAvatar.value
+                                      ? ref.read(authServiceProvider).currentUser?.avatarUrl
+                                      : avatar.value >= 0
+                                      ? _avatars[avatar.value]
                                       : null,
                                 ),
                               ),
@@ -229,26 +215,26 @@ class _UpdateDetailsPageState extends State<UpdateDetailsPage> {
                     const SizedBox(height: 22),
                     AuthField(
                       label: 'NAME',
-                      controller: _name,
+                      controller: name,
                       hint: 'Your name',
-                      error: _nameError,
+                      error: nameError.value,
                     ),
                     const SizedBox(height: 14),
                     AuthField(
                       label: 'EMAIL',
-                      controller: _email,
+                      controller: email,
                       hint: 'you@example.com',
-                      error: _emailError,
+                      error: emailError.value,
                       keyboardType: TextInputType.emailAddress,
                     ),
                   ],
                 ),
               ),
               SlabButton(
-                label: _saving ? 'Saving' : 'Save details',
-                enabled: !_saving,
-                busy: _saving,
-                onPressed: _save,
+                label: saving.value ? 'Saving' : 'Save details',
+                enabled: !saving.value,
+                busy: saving.value,
+                onPressed: save,
               ),
             ],
           ),
@@ -267,42 +253,33 @@ class _AvatarChoice {
   final Uint8List? bytes;
 }
 
-class _AvatarSheet extends StatefulWidget {
+class _AvatarSheet extends HookWidget {
   const _AvatarSheet({required this.selected, this.photo});
 
   final int selected;
   final Uint8List? photo;
 
   @override
-  State<_AvatarSheet> createState() => _AvatarSheetState();
-}
-
-class _AvatarSheetState extends State<_AvatarSheet> {
-  var _busy = false;
-
-  int get selected => widget.selected;
-
-  Uint8List? get photo => widget.photo;
-
-  Future<void> _upload(BuildContext context) async {
-    if (_busy) return;
-    _busy = true;
-    try {
-      final bytes = await pickCarePhoto(from: context);
-      if (!mounted) return;
-      if (bytes == null) return;
-      if (!context.mounted) return;
-      Navigator.pop(context, _AvatarChoice.photo(bytes));
-    } on AppException catch (error) {
-      if (!mounted) return;
-      showSproutToast(context, error.message, error: true);
-    } finally {
-      _busy = false;
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
+    // Guards against a second tap while the picker is open. It does not
+    // repaint the sheet, so it lives in a ref rather than in state.
+    final busy = useRef(false);
+
+    Future<void> upload(BuildContext context) async {
+      if (busy.value) return;
+      busy.value = true;
+      try {
+        final bytes = await pickCarePhoto(from: context);
+        if (bytes == null || !context.mounted) return;
+        Navigator.pop(context, _AvatarChoice.photo(bytes));
+      } on AppException catch (error) {
+        if (!context.mounted) return;
+        showSproutToast(context, error.message, error: true);
+      } finally {
+        busy.value = false;
+      }
+    }
+
     return CareSheet(
       child: ListView(
         shrinkWrap: true,
@@ -339,10 +316,10 @@ class _AvatarSheetState extends State<_AvatarSheet> {
             itemBuilder: (context, index) {
               if (index == _avatars.length) {
                 return GestureDetector(
-                  onTap: () => _upload(context),
+                  onTap: () => upload(context),
                   child: _Face(
                     selected: selected < 0 && photo != null,
-                    child: _busy
+                    child: busy.value
                         ? const Center(
                             child: SproutSpinner(color: AppColors.sproutGreen),
                           )

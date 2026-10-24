@@ -27,12 +27,11 @@ Future<void> main() async {
     apiBase: config.apiBaseUrl,
   );
   await services.auth.restore();
-  final theme = ThemeController();
-  await theme.load();
+  final appearance = await ThemeController.load();
   if (services.auth.isSignedIn) {
-    await PushService.start(services.profile);
+    await PushService(services.profile).start();
   }
-  runApp(SproutApp(services: services, theme: theme));
+  runApp(SproutApp(services: services, appearance: appearance));
 }
 
 class _ConfigMissing extends StatelessWidget {

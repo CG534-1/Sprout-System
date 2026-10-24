@@ -2,23 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/core/theme/app_colors.dart';
-import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/onboarding/onboarding_page.dart';
 import 'package:sprout/features/splash/splash_cup.dart';
 
-class SplashPage extends StatefulWidget {
+class SplashPage extends ConsumerStatefulWidget {
   const SplashPage({super.key});
 
   static const hold = Duration(milliseconds: 6600);
   static const reveal = Duration(milliseconds: 1400);
 
   @override
-  State<SplashPage> createState() => _SplashPageState();
+  ConsumerState<SplashPage> createState() => _SplashPageState();
 }
 
-class _SplashPageState extends State<SplashPage>
+class _SplashPageState extends ConsumerState<SplashPage>
     with SingleTickerProviderStateMixin {
   final _potKey = GlobalKey();
   final _slotKey = GlobalKey();
@@ -52,7 +52,7 @@ class _SplashPageState extends State<SplashPage>
       if (!mounted) return;
       // The cup only flies into the onboarding header when onboarding is
       // actually next. A returning account goes straight to its home.
-      final auth = context.read<AuthService>();
+      final auth = ref.read(authServiceProvider);
       if (auth.pastOnboarding) {
         auth.markSplashSeen();
         return;
@@ -72,7 +72,7 @@ class _SplashPageState extends State<SplashPage>
     _flight.forward();
     Future<void>.delayed(SplashPage.reveal, () {
       if (!mounted) return;
-      context.read<AuthService>().markSplashSeen();
+      ref.read(authServiceProvider).markSplashSeen();
     });
   }
 

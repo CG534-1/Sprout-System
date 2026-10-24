@@ -1,119 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sprout/core/notifications/push_service.dart';
 import 'package:sprout/core/widgets/person_avatar.dart';
+import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/core/theme/app_colors.dart';
-import 'package:sprout/data/models/care_enums.dart';
 import 'package:sprout/data/models/care_settings.dart';
-import 'package:sprout/data/models/slot_hours.dart';
 import 'package:sprout/data/models/user_profile.dart';
-import 'package:sprout/data/services/auth_service.dart';
-import 'package:sprout/data/services/care_service.dart';
-import 'package:sprout/data/services/pet_service.dart';
-import 'package:sprout/data/services/plant_service.dart';
-import 'package:sprout/data/services/profile_service.dart';
+import 'package:sprout/data/providers.dart';
+import 'package:sprout/features/profile/profile_providers.dart';
 import 'package:sprout/features/profile/profile_sheets.dart';
 import 'package:sprout/features/shell/care_nav.dart';
+import 'package:sprout/features/shell/quiet_card.dart';
 
-
-class ProfilePage extends StatefulWidget {
+class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
 
-  @override
-  State<ProfilePage> createState() => _ProfilePageState();
-}
-
-class _ProfilePageState extends State<ProfilePage> {
-  var _plants = 0;
-  var _pets = 0;
-  var _streak = 0;
-  var _weekDays = 0;
-  Set<int> _filled = {};
-  var _reminders = true;
-  var _overdue = true;
-  var _summary = true;
-  var _tips = false;
-  final _preferredSlots = <CareSlot>{CareSlot.morning};
-  var _lead = '30 min before';
-  var _slotHours = SlotHours.defaults;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-  }
-
-  Future<void> _load() async {
-    if (!mounted) return;
-    final plantService = context.read<PlantService>();
-    final petService = context.read<PetService>();
-    final care = context.read<CareService>();
-    final profile = context.read<ProfileService>();
-    final plants = await plantService.listPlants();
-    final pets = await petService.listPets();
-    final history = await care.history();
-    final settings = await profile.settings();
-    if (!mounted) return;
-    final days = history.map((entry) => DateTime(entry.completedAt.year, entry.completedAt.month, entry.completedAt.day)).toSet();
-    setState(() {
-      _plants = plants.length;
-      _pets = pets.length;
-      _streak = _careStreak(days);
-      _filled = _thisWeek(days);
-      _weekDays = _filled.length;
-      _reminders = settings.reminders;
-      _overdue = settings.overdue;
-      _summary = settings.summary;
-      _tips = settings.tips;
-      _preferredSlots
-        ..clear()
-        ..addAll(settings.preferredSlots);
-      _lead = settings.lead;
-      _slotHours = settings.slotHours;
-    });
-    if (settings.wantsPush) {
-      await PushService.enable(profile);
-    }
-  }
-
-  int _careStreak(Set<DateTime> days) {
-    final now = DateTime.now();
-    var cursor = DateTime(now.year, now.month, now.day);
-    if (!days.contains(cursor)) cursor = cursor.subtract(const Duration(days: 1));
-    var count = 0;
-    while (days.contains(cursor)) {
-      count += 1;
-      cursor = cursor.subtract(const Duration(days: 1));
-    }
-    return count;
-  }
-
-  Future<void> _saveSettings() {
-    return context.read<ProfileService>().updateSettings(
-      CareSettings(
-        reminders: _reminders,
-        overdue: _overdue,
-        summary: _summary,
-        tips: _tips,
-        preferredSlots: _preferredSlots.toList(),
-        lead: _lead,
-        slotHours: _slotHours,
-      ),
-    );
-  }
-
-  Set<int> _thisWeek(Set<DateTime> days) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final monday = today.subtract(Duration(days: today.weekday - 1));
-    return {
-      for (var index = 0; index < 7; index++)
-        if (days.contains(monday.add(Duration(days: index)))) index,
-    };
-  }
-
-  void _open(Widget sheet) {
+  void _open(BuildContext context, Widget sheet) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -123,8 +26,38 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final user = context.watch<AuthService>().currentUser;
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen(careSettingsProvider, (previous, next) {
+      // Asks for push once the saved settings first arrive, as opening
+      // Profile always has.
+      final settings = next.value;
+      if (settings == null || (previous?.hasValue ?? false)) return;
+      if (settings.wantsPush) ref.read(pushServiceProvider).enable();
+    });
+    final user = ref.watch(currentUserProvider);
+    final statsLoad = ref.watch(profileStatsProvider);
+    final stats = statsLoad.value ?? ProfileStats.empty;
+    final settingsLoad = ref.watch(careSettingsProvider);
+    final settings = settingsLoad.value ?? CareSettings.defaults;
+    final settingsNotifier = ref.read(careSettingsProvider.notifier);
+
+    // The sheets save the whole settings object, so opening one on the
+    // defaults would overwrite the saved settings with them.
+    bool settingsReady() {
+      if (settingsLoad.hasValue) return true;
+      if (settingsLoad.failedEmpty) {
+        ref.invalidate(careSettingsProvider);
+        showSproutToast(
+          context,
+          'Your settings could not load. Check your connection and try again.',
+          error: true,
+        );
+      } else {
+        showSproutToast(context, 'Your settings are still loading.');
+      }
+      return false;
+    }
+
     return Scaffold(
       backgroundColor: AppColors.onboardingPaper,
       body: SafeArea(
@@ -157,23 +90,48 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Row(
-                    children: [
-                      _Stat(value: '$_plants', label: _plants == 1 ? 'plant' : 'plants'),
-                      const SizedBox(width: 10),
-                      _Stat(value: '$_pets', label: _pets == 1 ? 'pet' : 'pets'),
-                      const SizedBox(width: 10),
-                      _Stat(value: '$_streak', label: 'care streak', accent: true),
-                    ],
+                if (statsLoad.failedEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: LoadFailedCard(
+                      title: 'Your progress could not load',
+                      onRetry: () => ref
+                        ..invalidate(homeProvider)
+                        ..invalidate(profileStatsProvider),
+                    ),
+                  )
+                else ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Row(
+                      children: [
+                        _Stat(
+                          value: '${stats.plants}',
+                          label: stats.plants == 1 ? 'plant' : 'plants',
+                        ),
+                        const SizedBox(width: 10),
+                        _Stat(
+                          value: '${stats.pets}',
+                          label: stats.pets == 1 ? 'pet' : 'pets',
+                        ),
+                        const SizedBox(width: 10),
+                        _Stat(
+                          value: '${stats.streak}',
+                          label: 'care streak',
+                          accent: true,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: _Week(filled: _filled, count: _weekDays),
-                ),
+                  const SizedBox(height: 18),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: _Week(
+                      filled: stats.filled,
+                      count: stats.filled.length,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -192,49 +150,54 @@ class _ProfilePageState extends State<ProfilePage> {
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: _Settings(
                     onNotifications: () {
-                      if (_reminders || _overdue || _summary) {
-                        PushService.enable(context.read<ProfileService>());
-                      }
+                      if (!settingsReady()) return;
+                      final push = ref.read(pushServiceProvider);
+                      if (settings.wantsPush) push.enable();
                       _open(
+                        context,
                         NotificationsSheet(
-                          reminders: _reminders,
-                          overdue: _overdue,
-                          summary: _summary,
-                          tips: _tips,
+                          reminders: settings.reminders,
+                          overdue: settings.overdue,
+                          summary: settings.summary,
+                          tips: settings.tips,
                           onChanged: (reminders, overdue, summary, tips) {
-                            setState(() {
-                              _reminders = reminders;
-                              _overdue = overdue;
-                              _summary = summary;
-                              _tips = tips;
-                            });
-                            _saveSettings();
+                            settingsNotifier.save(
+                              settingsNotifier.current.copyWith(
+                                reminders: reminders,
+                                overdue: overdue,
+                                summary: summary,
+                                tips: tips,
+                              ),
+                            );
                             if (reminders || overdue || summary) {
-                              PushService.enable(context.read<ProfileService>());
+                              push.enable();
                             }
                           },
                         ),
                       );
                     },
-                    onPreferences: () => _open(
-                      PreferencesSheet(
-                        preferredSlots: _preferredSlots,
-                        lead: _lead,
-                        slotHours: _slotHours,
-                        onChanged: (slots, lead, hours) {
-                          setState(() {
-                            _preferredSlots
-                              ..clear()
-                              ..addAll(slots);
-                            _lead = lead;
-                            _slotHours = hours;
-                          });
-                          _saveSettings();
-                        },
-                      ),
-                    ),
-                    onAccount: () => _open(AccountSheet(user: user)),
-                    onAppearance: () => _open(const AppearanceSheet()),
+                    onPreferences: () {
+                      if (!settingsReady()) return;
+                      _open(
+                        context,
+                        PreferencesSheet(
+                          preferredSlots: {...settings.preferredSlots},
+                          lead: settings.lead,
+                          slotHours: settings.slotHours,
+                          onChanged: (slots, lead, hours) {
+                            settingsNotifier.save(
+                              settingsNotifier.current.copyWith(
+                                preferredSlots: slots.toList(),
+                                lead: lead,
+                                slotHours: hours,
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                    onAccount: () => _open(context, AccountSheet(user: user)),
+                    onAppearance: () => _open(context, const AppearanceSheet()),
                   ),
                 ),
               ],

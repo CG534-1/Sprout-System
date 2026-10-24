@@ -1,112 +1,89 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/widgets/sprout_toast.dart';
-import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/auth_validators.dart';
 import 'package:sprout/features/auth/auth_widgets.dart';
 import 'package:sprout/features/splash/splash_cup.dart';
 
-class SignInPage extends StatefulWidget {
+class SignInPage extends HookConsumerWidget {
   const SignInPage({super.key});
 
   @override
-  State<SignInPage> createState() => _SignInPageState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final email = useTextEditingController();
+    final password = useTextEditingController();
+    useListenable(Listenable.merge([email, password]));
+    final obscure = useState(true);
+    final submitting = useState(false);
+    final emailError = useState<String?>(null);
+    final passwordError = useState<String?>(null);
 
-class _SignInPageState extends State<SignInPage> {
-  final _email = TextEditingController();
-  final _password = TextEditingController();
-  var _obscure = true;
-  var _submitting = false;
-  String? _emailError;
-  String? _passwordError;
+    useEffect(() {
+      void clearFixedErrors() {
+        if (emailError.value != null && email.text.trim().isNotEmpty) {
+          emailError.value = null;
+        }
+        if (passwordError.value != null && password.text.isNotEmpty) {
+          passwordError.value = null;
+        }
+      }
 
-  @override
-  void initState() {
-    super.initState();
-    _email.addListener(_refresh);
-    _password.addListener(_refresh);
-    _leaveFieldsAlone();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _tellIfTimedOut());
-  }
-
-  void _tellIfTimedOut() {
-    if (!mounted) return;
-    final auth = context.read<AuthService>();
-    if (!auth.sessionExpired) return;
-    auth.clearSessionExpired();
-    showSproutToast(
-      context,
-      'You were away a while, so we signed you out. Sign in to pick up again.',
-    );
-  }
-
-  void _leaveFieldsAlone() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      FocusManager.instance.primaryFocus?.unfocus();
-    });
-  }
-
-  void _refresh() {
-    if (_emailError != null && _email.text.trim().isNotEmpty) {
-      _emailError = null;
-    }
-    if (_passwordError != null && _password.text.isNotEmpty) {
-      _passwordError = null;
-    }
-    setState(() {});
-  }
-
-  @override
-  void dispose() {
-    _email.removeListener(_refresh);
-    _password.removeListener(_refresh);
-    _email.dispose();
-    _password.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    final emailError = validateEmail(_email.text);
-    final passwordError = validatePassword(_password.text);
-    if (emailError != null || passwordError != null) {
-      setState(() {
-        _emailError = emailError;
-        _passwordError = passwordError;
+      email.addListener(clearFixedErrors);
+      password.addListener(clearFixedErrors);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        FocusManager.instance.primaryFocus?.unfocus();
       });
-      return;
-    }
-    setState(() {
-      _submitting = true;
-      _emailError = null;
-      _passwordError = null;
-    });
-    final toast = sproutToaster(context);
-    final router = GoRouter.of(context);
-    try {
-      await context.read<AuthService>().signIn(
-        email: _email.text,
-        password: _password.text,
-      );
-      if (!mounted) return;
-      router.go(AppRoutes.today);
-    } on AppException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _passwordError = error.message;
-        _submitting = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        final auth = ref.read(authServiceProvider);
+        if (!auth.sessionExpired) return;
+        auth.clearSessionExpired();
+        showSproutToast(
+          context,
+          'You were away a while, so we signed you out. Sign in to pick up again.',
+        );
       });
-      toast.show(error.message, error: true);
-    }
-  }
+      return () {
+        email.removeListener(clearFixedErrors);
+        password.removeListener(clearFixedErrors);
+      };
+    }, const []);
 
-  @override
-  Widget build(BuildContext context) {
+    Future<void> submit() async {
+      final emailFailure = validateEmail(email.text);
+      final passwordFailure = validatePassword(password.text);
+      if (emailFailure != null || passwordFailure != null) {
+        emailError.value = emailFailure;
+        passwordError.value = passwordFailure;
+        return;
+      }
+      submitting.value = true;
+      emailError.value = null;
+      passwordError.value = null;
+      final toast = sproutToaster(context);
+      final router = GoRouter.of(context);
+      try {
+        await ref.read(authServiceProvider).signIn(
+          email: email.text,
+          password: password.text,
+        );
+        if (!context.mounted) return;
+        router.go(AppRoutes.today);
+      } on AppException catch (failure) {
+        if (!context.mounted) return;
+        passwordError.value = failure.message;
+        submitting.value = false;
+        toast.show(failure.message, error: true);
+      }
+    }
+
     return Focus(
       autofocus: true,
       child: Scaffold(
@@ -150,24 +127,24 @@ class _SignInPageState extends State<SignInPage> {
                       const SizedBox(height: 36),
                       AuthField(
                         label: 'EMAIL',
-                        controller: _email,
+                        controller: email,
                         hint: 'you@example.com',
-                        error: _emailError,
+                        error: emailError.value,
                         fieldKey: const Key('sign-in-email'),
                         keyboardType: TextInputType.emailAddress,
                       ),
                       const SizedBox(height: 14),
                       AuthField(
                         label: 'PASSWORD',
-                        controller: _password,
+                        controller: password,
                         hint: 'Your password',
-                        error: _passwordError,
+                        error: passwordError.value,
                         fieldKey: const Key('sign-in-password'),
-                        obscure: _obscure,
+                        obscure: obscure.value,
                         suffix: IconButton(
-                          onPressed: () => setState(() => _obscure = !_obscure),
+                          onPressed: () => obscure.value = !obscure.value,
                           icon: Icon(
-                            _obscure
+                            obscure.value
                                 ? Icons.visibility_off_outlined
                                 : Icons.visibility_outlined,
                             color: AppColors.sproutGreen,
@@ -195,13 +172,13 @@ class _SignInPageState extends State<SignInPage> {
                 ),
                 SlabButton(
                   key: const Key('sign-in-submit'),
-                  label: _submitting ? 'Signing in' : 'Sign in',
-                  onPressed: _submitting ? null : _submit,
-                  busy: _submitting,
+                  label: submitting.value ? 'Signing in' : 'Sign in',
+                  onPressed: submitting.value ? null : submit,
+                  busy: submitting.value,
                   enabled:
-                      _email.text.trim().isNotEmpty &&
-                      _password.text.isNotEmpty &&
-                      !_submitting,
+                      email.text.trim().isNotEmpty &&
+                      password.text.isNotEmpty &&
+                      !submitting.value,
                 ),
                 const SizedBox(height: 14),
                 Text.rich(

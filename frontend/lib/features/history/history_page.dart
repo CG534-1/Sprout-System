@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/data/models/care_enums.dart';
 import 'package:sprout/data/models/care_history_entry.dart';
-import 'package:sprout/data/services/care_service.dart';
-import 'package:sprout/data/services/pet_service.dart';
-import 'package:sprout/data/services/plant_service.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/features/care/care_sheet.dart';
+import 'package:sprout/features/history/history_providers.dart';
 import 'package:sprout/features/shell/care_nav.dart';
 import 'package:sprout/features/shell/quiet_card.dart';
 
@@ -16,72 +16,28 @@ const _mint = Color(0xFF87DB6C);
 
 enum _Filter { all, plants, pets }
 
-class HistoryPage extends StatefulWidget {
+class HistoryPage extends HookConsumerWidget {
   const HistoryPage({super.key});
 
   @override
-  State<HistoryPage> createState() => _HistoryPageState();
-}
-
-class _HistoryPageState extends State<HistoryPage> {
-  var _filter = _Filter.all;
-  var _loading = true;
-  List<CareHistoryEntry> _entries = [];
-  Map<String, String> _photos = {};
-  CareService? _care;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _care = context.read<CareService>()..addListener(_load);
-      _load();
-    });
-  }
-
-  @override
-  void dispose() {
-    _care?.removeListener(_load);
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    final care = _care;
-    if (care == null || !mounted) return;
-    final plants = context.read<PlantService>();
-    final pets = context.read<PetService>();
-    final bundled = await (care.history(), plants.listPlants(), pets.listPets()).wait;
-    if (!mounted) return;
-    final photos = <String, String>{};
-    for (final plant in bundled.$2) {
-      final url = plant.photoUrl;
-      if (url != null) photos[plant.name] = url;
-    }
-    for (final pet in bundled.$3) {
-      final url = pet.photoUrl;
-      if (url != null) photos[pet.name] = url;
-    }
-    final entries = List<CareHistoryEntry>.of(bundled.$1)
-      ..sort((a, b) => b.completedAt.compareTo(a.completedAt));
-    setState(() {
-      _entries = entries;
-      _photos = photos;
-      _loading = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final filter = useState(_Filter.all);
+    final selectedFilter = filter.value;
+    final load = ref.watch(careHistoryProvider);
+    final history = load.value;
+    final failed = load.failedEmpty;
+    final loading = history == null && !failed;
+    final entries = history?.entries ?? const <CareHistoryEntry>[];
+    final photos = history?.photos ?? const <String, String>{};
     final now = DateTime.now();
-    final visible = _entries.where((entry) {
-      return switch (_filter) {
+    final visible = entries.where((entry) {
+      return switch (selectedFilter) {
         _Filter.all => true,
         _Filter.plants => entry.subjectType == CareSubjectType.plant,
         _Filter.pets => entry.subjectType == CareSubjectType.pet,
       };
     }).toList();
-    final monthCount = _entries
+    final monthCount = entries
         .where((entry) => entry.completedAt.year == now.year && entry.completedAt.month == now.month)
         .length;
 
@@ -125,7 +81,7 @@ class _HistoryPageState extends State<HistoryPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _entries.isEmpty
+                        entries.isEmpty
                             ? 'No moments yet'
                             : monthCount == 0
                             ? 'None this month'
@@ -140,7 +96,7 @@ class _HistoryPageState extends State<HistoryPage> {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        _entries.isEmpty
+                        entries.isEmpty
                             ? 'Completed care will gather here.'
                             : 'completed this month',
                         style: GoogleFonts.dmSans(fontSize: 11, height: 1.5, color: _mint),
@@ -149,34 +105,41 @@ class _HistoryPageState extends State<HistoryPage> {
                   ),
                 ),
                 const SizedBox(height: 25),
-                if (_entries.isNotEmpty)
+                if (entries.isNotEmpty)
                   Row(
                     children: [
                       _HistoryChip(
                         label: 'All',
-                        selected: _filter == _Filter.all,
-                        onTap: () => setState(() => _filter = _Filter.all),
+                        selected: selectedFilter == _Filter.all,
+                        onTap: () => filter.value = _Filter.all,
                       ),
                       const SizedBox(width: 7),
                       _HistoryChip(
                         label: 'Plants',
-                        selected: _filter == _Filter.plants,
-                        onTap: () => setState(() => _filter = _Filter.plants),
+                        selected: selectedFilter == _Filter.plants,
+                        onTap: () => filter.value = _Filter.plants,
                       ),
                       const SizedBox(width: 7),
                       _HistoryChip(
                         label: 'Pets',
-                        selected: _filter == _Filter.pets,
-                        onTap: () => setState(() => _filter = _Filter.pets),
+                        selected: selectedFilter == _Filter.pets,
+                        onTap: () => filter.value = _Filter.pets,
                       ),
                     ],
                   ),
-                if (_loading)
+                if (failed)
+                  LoadFailedCard(
+                    title: 'Your history could not load',
+                    onRetry: () => ref
+                      ..invalidate(homeProvider)
+                      ..invalidate(careHistoryProvider),
+                  )
+                else if (loading)
                   const Padding(
                     padding: EdgeInsets.only(top: 28),
                     child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
                   )
-                else if (_entries.isEmpty)
+                else if (entries.isEmpty)
                   const QuietCard(
                     icon: Icons.history,
                     title: 'History starts later',
@@ -203,7 +166,7 @@ class _HistoryPageState extends State<HistoryPage> {
                       ),
                     _HistoryRow(
                       entry: visible[index],
-                      photo: _photos[visible[index].subjectName],
+                      photo: photos[visible[index].subjectName],
                     ),
                   ],
               ],

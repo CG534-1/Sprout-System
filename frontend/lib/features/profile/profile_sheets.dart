@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/widgets/person_avatar.dart';
@@ -509,7 +510,7 @@ Future<void> showDeleteAccountSheet(BuildContext context) {
 }
 
 /// A confirm button that shows its own progress and reports what happened.
-class _DangerAction extends StatefulWidget {
+class _DangerAction extends ConsumerStatefulWidget {
   const _DangerAction({
     required this.label,
     required this.busyLabel,
@@ -523,16 +524,16 @@ class _DangerAction extends StatefulWidget {
   final Future<void> Function(AuthService auth) run;
 
   @override
-  State<_DangerAction> createState() => _DangerActionState();
+  ConsumerState<_DangerAction> createState() => _DangerActionState();
 }
 
-class _DangerActionState extends State<_DangerAction> {
+class _DangerActionState extends ConsumerState<_DangerAction> {
   var _busy = false;
 
   Future<void> _press() async {
     if (_busy) return;
     setState(() => _busy = true);
-    final auth = context.read<AuthService>();
+    final auth = ref.read(authServiceProvider);
     final router = GoRouter.of(context);
     final toast = sproutToaster(context);
     final navigator = Navigator.of(context);
@@ -577,12 +578,12 @@ class _DangerActionState extends State<_DangerAction> {
   }
 }
 
-class AppearanceSheet extends StatelessWidget {
+class AppearanceSheet extends ConsumerWidget {
   const AppearanceSheet({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final theme = context.watch<ThemeController>().label;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = ref.watch(themeControllerProvider).label;
     const options = [
       ('☀️', 'Light', 'Bright & fresh'),
       ('🌙', 'Dark', 'Easy on the eyes'),
@@ -635,7 +636,7 @@ class AppearanceSheet extends StatelessWidget {
                             title: options[index].$2,
                             subtitle: options[index].$3,
                             selected: theme == options[index].$2,
-                            onTap: () => context.read<ThemeController>().select(
+                            onTap: () => ref.read(themeControllerProvider.notifier).select(
                               options[index].$2,
                             ),
                           ),

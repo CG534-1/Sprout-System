@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sprout/core/layout/mobile_frame.dart';
 import 'package:sprout/core/notifications/push_service.dart';
 import 'package:sprout/core/router/app_router.dart';
@@ -8,100 +7,103 @@ import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/theme/app_theme.dart';
 import 'package:sprout/core/theme/theme_controller.dart';
 import 'package:sprout/data/app_services.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/data/services/auth_service.dart';
-import 'package:sprout/data/services/care_service.dart';
-import 'package:sprout/data/services/pet_service.dart';
-import 'package:sprout/data/services/plant_service.dart';
-import 'package:sprout/data/services/profile_service.dart';
 
 class SproutApp extends StatefulWidget {
-  const SproutApp({super.key, required this.services, this.theme});
+  const SproutApp({
+    super.key,
+    required this.services,
+    this.appearance = SproutAppearance.light,
+  });
 
   final AppServices services;
-  final ThemeController? theme;
+  final SproutAppearance appearance;
 
   @override
   State<SproutApp> createState() => _SproutAppState();
 }
 
-class _SproutAppState extends State<SproutApp> with WidgetsBindingObserver {
-  late final GoRouter _router;
-  late final ThemeController _theme;
-  late final bool _ownsTheme;
-
-  @override
-  void initState() {
-    super.initState();
-    _router = createAppRouter(widget.services.auth);
-    _ownsTheme = widget.theme == null;
-    _theme = widget.theme ?? ThemeController();
-    WidgetsBinding.instance.addObserver(this);
-    widget.services.auth.addListener(_syncPush);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncPush());
-  }
-
-  void _syncPush() {
-    if (!widget.services.auth.isSignedIn) {
-      PushService.reset();
-      return;
-    }
-    PushService.start(widget.services.profile);
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Stamps the idle clock when the app is backgrounded or brought back.
-    widget.services.auth.keepAlive();
-  }
-
+class _SproutAppState extends State<SproutApp> {
   @override
   void dispose() {
-    widget.services.auth.removeListener(_syncPush);
-    WidgetsBinding.instance.removeObserver(this);
-    _router.dispose();
+    // The scope below unmounts first, so providers have let go of the
+    // services by the time they are disposed here.
     widget.services.dispose();
-    if (_ownsTheme) _theme.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeController>.value(value: _theme),
-        ChangeNotifierProvider<AuthService>.value(value: widget.services.auth),
-        ChangeNotifierProvider<PlantService>.value(
-          value: widget.services.plants,
-        ),
-        ChangeNotifierProvider<PetService>.value(value: widget.services.pets),
-        ChangeNotifierProvider<CareService>.value(value: widget.services.care),
-        ChangeNotifierProvider<ProfileService>.value(
-          value: widget.services.profile,
+    return ProviderScope(
+      overrides: [
+        appServicesProvider.overrideWithValue(widget.services),
+        themeControllerProvider.overrideWith(
+          () => ThemeController(widget.appearance),
         ),
       ],
-      child: _SproutMaterialApp(router: _router),
+      // A failed load shows its error and waits for the person to retry,
+      // as it did before Riverpod, instead of retrying on its own.
+      retry: (retryCount, error) => null,
+      child: const _SproutMaterialApp(),
     );
   }
 }
 
-class _SproutMaterialApp extends StatelessWidget {
-  const _SproutMaterialApp({required this.router});
+class _SproutMaterialApp extends ConsumerStatefulWidget {
+  const _SproutMaterialApp();
 
-  final GoRouter router;
+  @override
+  ConsumerState<_SproutMaterialApp> createState() => _SproutMaterialAppState();
+}
+
+class _SproutMaterialAppState extends ConsumerState<_SproutMaterialApp>
+    with WidgetsBindingObserver {
+  late final AuthService _auth;
+
+  @override
+  void initState() {
+    super.initState();
+    _auth = ref.read(authServiceProvider);
+    WidgetsBinding.instance.addObserver(this);
+    _auth.addListener(_syncPush);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncPush());
+  }
+
+  void _syncPush() {
+    if (!_auth.isSignedIn) {
+      ref.read(pushServiceProvider).reset();
+      return;
+    }
+    ref.read(pushServiceProvider).start();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Stamps the idle clock when the app is backgrounded or brought back.
+    _auth.keepAlive();
+  }
+
+  @override
+  void dispose() {
+    _auth.removeListener(_syncPush);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final appearance = ref.watch(themeControllerProvider);
     return MaterialApp.router(
       title: 'Sprout',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      themeMode: context.watch<ThemeController>().themeMode,
+      themeMode: appearance.themeMode,
       themeAnimationDuration: Duration.zero,
-      routerConfig: router,
+      routerConfig: ref.watch(routerProvider),
       debugShowCheckedModeBanner: false,
       scrollBehavior: const _PhoneScrollBehavior(),
       builder: (context, child) {
-        final appearance = context.watch<ThemeController>().appearance;
         final platform = MediaQuery.platformBrightnessOf(context);
         final brightness = switch (appearance) {
           SproutAppearance.dark => Brightness.dark,

@@ -155,6 +155,7 @@ void main() {
 
   testWidgets('an overdue task can be skipped', (tester) async {
     final store = MockStore.seeded(delay: Duration.zero);
+    final now = DateTime.now();
     store.plants.clear();
     store.pets.removeWhere((pet) => pet.id != 'pet-milo');
     store.tasks
@@ -167,7 +168,9 @@ void main() {
           subjectType: CareSubjectType.pet,
           subjectName: 'Milo',
           action: CareAction.walk,
-          dueAt: DateTime.now().subtract(const Duration(hours: 6)),
+          // The start of today is already past and still today, whatever
+          // time the suite runs. Six hours ago is yesterday before 6 am.
+          dueAt: DateTime(now.year, now.month, now.day),
           status: TaskStatus.due,
         ),
       );

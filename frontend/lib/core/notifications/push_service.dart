@@ -1,41 +1,54 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sprout/core/config.dart';
 import 'package:sprout/core/notifications/local_push.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/data/services/profile_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> sproutBackgroundMessage(RemoteMessage message) async {}
 
+final pushServiceProvider = Provider<PushService>(
+  (ref) => PushService(ref.watch(profileServiceProvider)),
+);
+
 class PushService {
+  PushService(this._profile);
+
+  final ProfileService _profile;
+
+  // Firebase streams and the permission prompt belong to the whole app, so
+  // these stay shared by every instance.
   static var _started = false;
   static var _refreshBound = false;
   static var _asked = false;
   static var _foregroundBound = false;
   static final _local = createLocalPush();
 
-  static Future<void> start(ProfileService profile) async {
+  Future<void> start() async {
     try {
-      final settings = await profile.settings();
+      final settings = await _profile.settings();
       if (!settings.wantsPush) {
-        _listenRefresh(profile);
+        _listenRefresh(_profile);
         return;
       }
     } catch (_) {}
-    await enable(profile);
+    await enable();
   }
 
-  static void reset() {
+  /// Lets the next sign in ask for permission again.
+  void reset() {
     _asked = false;
   }
 
-  static Future<void> enable(ProfileService profile) async {
+  Future<void> enable() async {
     final token = await _token(ask: true);
     if (token != null) {
-      await profile.registerDevice(token: token, platform: _platform);
+      await _profile.registerDevice(token: token, platform: _platform);
     }
-    _listenRefresh(profile);
+    _listenRefresh(_profile);
     _listenForeground();
   }
 

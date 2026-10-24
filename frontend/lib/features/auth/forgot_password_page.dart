@@ -1,80 +1,68 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/widgets/sprout_toast.dart';
-import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/auth_validators.dart';
 import 'package:sprout/features/auth/auth_widgets.dart';
 
-class ForgotPasswordPage extends StatefulWidget {
+class ForgotPasswordPage extends HookConsumerWidget {
   const ForgotPasswordPage({super.key});
 
   @override
-  State<ForgotPasswordPage> createState() => _ForgotPasswordPageState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final email = useTextEditingController();
+    // Rebuilds on every keystroke so the button follows the field.
+    useListenable(email);
+    final submitting = useState(false);
+    final error = useState<String?>(null);
 
-class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
-  final _email = TextEditingController();
-  var _submitting = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _email.addListener(_refresh);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      FocusManager.instance.primaryFocus?.unfocus();
-      final user = context.read<AuthService>().currentUser;
-      if (user != null && _email.text.isEmpty) {
-        _email.text = user.email;
+    useEffect(() {
+      void clearFixedError() {
+        if (error.value != null && validateEmail(email.text) == null) {
+          error.value = null;
+        }
       }
-    });
-  }
 
-  void _refresh() {
-    if (_error != null && validateEmail(_email.text) == null) _error = null;
-    setState(() {});
-  }
-
-  @override
-  void dispose() {
-    _email.removeListener(_refresh);
-    _email.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    final emailError = validateEmail(_email.text);
-    if (emailError != null) {
-      setState(() => _error = emailError);
-      return;
-    }
-    setState(() {
-      _submitting = true;
-      _error = null;
-    });
-    try {
-      await context.read<AuthService>().sendPasswordReset(email: _email.text);
-      if (!mounted) return;
-      showSproutToast(context, 'Code sent to ${_email.text.trim()}.');
-      final email = Uri.encodeQueryComponent(_email.text.trim());
-      context.push('${AppRoutes.verifyEmail}?email=$email&purpose=recovery');
-      setState(() => _submitting = false);
-    } on AppException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _error = error.message;
-        _submitting = false;
+      email.addListener(clearFixedError);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        FocusManager.instance.primaryFocus?.unfocus();
+        final user = ref.read(authServiceProvider).currentUser;
+        if (user != null && email.text.isEmpty) {
+          email.text = user.email;
+        }
       });
-    }
-  }
+      return () => email.removeListener(clearFixedError);
+    }, const []);
 
-  @override
-  Widget build(BuildContext context) {
+    Future<void> submit() async {
+      final emailError = validateEmail(email.text);
+      if (emailError != null) {
+        error.value = emailError;
+        return;
+      }
+      submitting.value = true;
+      error.value = null;
+      try {
+        await ref.read(authServiceProvider).sendPasswordReset(email: email.text);
+        if (!context.mounted) return;
+        showSproutToast(context, 'Code sent to ${email.text.trim()}.');
+        final address = Uri.encodeQueryComponent(email.text.trim());
+        context.push('${AppRoutes.verifyEmail}?email=$address&purpose=recovery');
+        submitting.value = false;
+      } on AppException catch (failure) {
+        if (!context.mounted) return;
+        error.value = failure.message;
+        submitting.value = false;
+      }
+    }
+
     return Focus(
       autofocus: true,
       child: Scaffold(
@@ -110,9 +98,9 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                     const SizedBox(height: 22),
                     AuthField(
                         label: 'EMAIL',
-                        controller: _email,
+                        controller: email,
                         hint: 'you@example.com',
-                        error: _error,
+                        error: error.value,
                         keyboardType: TextInputType.emailAddress,
                       ),
                   ],
@@ -121,10 +109,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
               Padding(
                 padding: const EdgeInsets.only(left: 6),
                 child: SlabButton(
-                  label: _submitting ? 'Sending' : 'Send code',
-                  enabled: _email.text.trim().isNotEmpty && !_submitting,
-                  busy: _submitting,
-                  onPressed: _submit,
+                  label: submitting.value ? 'Sending' : 'Send code',
+                  enabled: email.text.trim().isNotEmpty && !submitting.value,
+                  busy: submitting.value,
+                  onPressed: submit,
                 ),
               ),
             ],

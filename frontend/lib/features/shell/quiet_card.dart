@@ -2,6 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 
+/// Stands in for a list that could not load, with a way to try again.
+class LoadFailedCard extends StatelessWidget {
+  const LoadFailedCard({super.key, required this.title, required this.onRetry});
+
+  final String title;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return QuietCard(
+      icon: Icons.cloud_off_outlined,
+      title: title,
+      body: 'Check your connection and try again.',
+      action: 'Try again',
+      onAction: onRetry,
+    );
+  }
+}
+
 class QuietCard extends StatelessWidget {
   const QuietCard({
     super.key,

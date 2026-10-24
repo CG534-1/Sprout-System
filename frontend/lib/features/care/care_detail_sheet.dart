@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/data/models/care_enums.dart';
 import 'package:sprout/data/models/care_schedule.dart';
-import 'package:sprout/data/services/pet_service.dart';
-import 'package:sprout/data/services/plant_service.dart';
 import 'package:sprout/features/care/add_care_sheet.dart';
 import 'package:sprout/features/care/care_sheet.dart';
 
@@ -23,14 +22,14 @@ Future<void> showCareDetailSheet(BuildContext context, CareDraft subject) {
   );
 }
 
-class _DetailSheet extends StatelessWidget {
+class _DetailSheet extends ConsumerWidget {
   const _DetailSheet({required this.host, required this.subject});
 
   final BuildContext host;
   final CareDraft subject;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final plant = subject.type == CareSubjectType.plant;
     final water = _first(CareAction.water);
     return CareSheet(
@@ -164,7 +163,7 @@ class _DetailSheet extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 28),
                   child: GestureDetector(
-                    onTap: () => _remove(context),
+                    onTap: () => _remove(context, ref),
                     child: Text(
                       'Remove ${subject.name} from my care',
                       textAlign: TextAlign.center,
@@ -221,7 +220,7 @@ class _DetailSheet extends StatelessWidget {
     return '$lead · $times';
   }
 
-  Future<void> _remove(BuildContext context) async {
+  Future<void> _remove(BuildContext context, WidgetRef ref) async {
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -297,8 +296,8 @@ class _DetailSheet extends StatelessWidget {
     );
     if (confirmed != true || !context.mounted) return;
     final toast = sproutToaster(context);
-    final plants = context.read<PlantService>();
-    final pets = context.read<PetService>();
+    final plants = ref.read(plantServiceProvider);
+    final pets = ref.read(petServiceProvider);
     Navigator.of(context).pop();
     try {
       if (subject.type == CareSubjectType.plant) {

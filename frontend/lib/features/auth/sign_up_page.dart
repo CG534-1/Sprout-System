@@ -3,18 +3,18 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/photo_picker.dart';
 import 'package:sprout/core/widgets/person_avatar.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/widgets/sprout_toast.dart';
-import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/auth_validators.dart';
 import 'package:sprout/features/auth/auth_widgets.dart';
 
-class SignUpPage extends StatefulWidget {
+class SignUpPage extends ConsumerStatefulWidget {
   const SignUpPage({super.key, this.step = 0});
 
   /// Which step the URL is asking for. Keeping it in the address means the
@@ -22,10 +22,10 @@ class SignUpPage extends StatefulWidget {
   final int step;
 
   @override
-  State<SignUpPage> createState() => _SignUpPageState();
+  ConsumerState<SignUpPage> createState() => _SignUpPageState();
 }
 
-class _SignUpPageState extends State<SignUpPage> {
+class _SignUpPageState extends ConsumerState<SignUpPage> {
   /// The furthest step unlocked so far, so a hand-typed URL cannot skip ahead.
   var _reached = 0;
   final _first = TextEditingController();
@@ -48,25 +48,26 @@ class _SignUpPageState extends State<SignUpPage> {
   var _agreed = false;
   var _submitting = false;
   var _continuedAfterCode = false;
-  AuthService? _auth;
 
   int get _step => widget.step.clamp(0, _reached);
 
   @override
   void initState() {
     super.initState();
-    _auth = context.read<AuthService>();
-    if (_auth!.pendingSignup) {
+    final auth = ref.read(authServiceProvider);
+    if (auth.pendingSignup) {
       _continuedAfterCode = true;
       _reached = 1;
-      _first.text = _auth!.pendingFirst ?? '';
-      _last.text = _auth!.pendingLast ?? '';
-      _email.text = _auth!.pendingEmail ?? '';
+      _first.text = auth.pendingFirst ?? '';
+      _last.text = auth.pendingLast ?? '';
+      _email.text = auth.pendingEmail ?? '';
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && widget.step == 0) _goStep(1);
       });
     }
-    _auth!.addListener(_continueAfterCode);
+    ref.listenManual(pendingSignupProvider, (previous, pending) {
+      if (pending) _continueAfterCode();
+    });
     _first.addListener(_refresh);
     _last.addListener(_refresh);
     _email.addListener(_refresh);
@@ -88,7 +89,6 @@ class _SignUpPageState extends State<SignUpPage> {
 
   void _continueAfterCode() {
     if (!mounted || _continuedAfterCode || _step != 0) return;
-    if (_auth?.pendingSignup != true) return;
     _continuedAfterCode = true;
     _goStep(1);
   }
@@ -113,7 +113,6 @@ class _SignUpPageState extends State<SignUpPage> {
 
   @override
   void dispose() {
-    _auth?.removeListener(_continueAfterCode);
     _first.removeListener(_refresh);
     _last.removeListener(_refresh);
     _email.removeListener(_refresh);
@@ -177,7 +176,7 @@ class _SignUpPageState extends State<SignUpPage> {
       }
       setState(() => _submitting = true);
       try {
-        await context.read<AuthService>().requestEmailConfirmation(
+        await ref.read(authServiceProvider).requestEmailConfirmation(
           firstName: _first.text,
           lastName: _last.text,
           email: _email.text,
@@ -237,7 +236,7 @@ class _SignUpPageState extends State<SignUpPage> {
       _passwordError = null;
     });
     try {
-      final needsConfirmation = await context.read<AuthService>().signUp(
+      final needsConfirmation = await ref.read(authServiceProvider).signUp(
         name: '${_first.text.trim()} ${_last.text.trim()}',
         email: _email.text,
         password: _password.text,

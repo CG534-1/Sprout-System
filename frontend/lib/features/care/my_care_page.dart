@@ -1,98 +1,38 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/data/models/care_enums.dart';
-import 'package:sprout/data/models/care_schedule.dart';
-import 'package:sprout/data/models/pet.dart';
-import 'package:sprout/data/models/plant.dart';
-import 'package:sprout/data/services/care_service.dart';
-import 'package:sprout/data/services/pet_service.dart';
-import 'package:sprout/data/services/plant_service.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/features/care/add_care_sheet.dart';
 import 'package:sprout/features/care/care_detail_sheet.dart';
 import 'package:sprout/features/care/care_sheet.dart';
+import 'package:sprout/features/care/my_care_providers.dart';
 import 'package:sprout/features/shell/care_nav.dart';
 import 'package:sprout/features/shell/quiet_card.dart';
 
 enum _Filter { all, plants, pets }
 
-class MyCarePage extends StatefulWidget {
+class MyCarePage extends HookConsumerWidget {
   const MyCarePage({super.key});
 
   @override
-  State<MyCarePage> createState() => _MyCarePageState();
-}
-
-class _MyCarePageState extends State<MyCarePage> {
-  var _filter = _Filter.all;
-  var _loading = true;
-  List<_Member> _members = [];
-  PlantService? _plants;
-  PetService? _pets;
-  CareService? _care;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _plants = context.read<PlantService>()..addListener(_load);
-      _pets = context.read<PetService>()..addListener(_load);
-      _care = context.read<CareService>()..addListener(_load);
-      _load();
-    });
-  }
-
-  @override
-  void dispose() {
-    _plants?.removeListener(_load);
-    _pets?.removeListener(_load);
-    _care?.removeListener(_load);
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    final plants = _plants;
-    final pets = _pets;
-    final care = _care;
-    if (plants == null || pets == null || care == null) return;
-    final bundled = await (plants.listPlants(), pets.listPets(), care.schedules()).wait;
-    if (!mounted) return;
-    final schedules = bundled.$3;
-    final members = <_Member>[
-      for (final plant in bundled.$1)
-        _Member.plant(
-          plant,
-          schedules.where((item) => item.subjectId == plant.id).toList(),
-        ),
-      for (final pet in bundled.$2)
-        _Member.pet(
-          pet,
-          schedules.where((item) => item.subjectId == pet.id).toList(),
-        ),
-    ]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    setState(() {
-      _members = members;
-      _loading = false;
-    });
-  }
-
-  List<_Member> get _visible {
-    return switch (_filter) {
-      _Filter.all => _members,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final filter = useState(_Filter.all);
+    final selectedFilter = filter.value;
+    final load = ref.watch(careMembersProvider);
+    final loaded = load.value;
+    final failed = load.failedEmpty;
+    final loading = loaded == null && !failed;
+    final members = loaded ?? const <CareMember>[];
+    final visible = switch (selectedFilter) {
+      _Filter.all => members,
       _Filter.plants =>
-        _members.where((item) => item.type == CareSubjectType.plant).toList(),
+        members.where((item) => item.type == CareSubjectType.plant).toList(),
       _Filter.pets =>
-        _members.where((item) => item.type == CareSubjectType.pet).toList(),
+        members.where((item) => item.type == CareSubjectType.pet).toList(),
     };
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final visible = _visible;
     return Scaffold(
       backgroundColor: AppColors.onboardingPaper,
       body: SafeArea(
@@ -159,33 +99,40 @@ class _MyCarePageState extends State<MyCarePage> {
                   ],
                 ),
                 const SizedBox(height: 24),
-                if (_members.isNotEmpty) ...[
+                if (members.isNotEmpty) ...[
                   Row(
                     children: [
                       _FilterChip(
                         label: 'All',
-                        selected: _filter == _Filter.all,
-                        onTap: () => setState(() => _filter = _Filter.all),
+                        selected: selectedFilter == _Filter.all,
+                        onTap: () => filter.value = _Filter.all,
                       ),
                       const SizedBox(width: 7),
                       _FilterChip(
                         label: 'Plants',
-                        selected: _filter == _Filter.plants,
-                        onTap: () => setState(() => _filter = _Filter.plants),
+                        selected: selectedFilter == _Filter.plants,
+                        onTap: () => filter.value = _Filter.plants,
                       ),
                       const SizedBox(width: 7),
                       _FilterChip(
                         label: 'Pets',
-                        selected: _filter == _Filter.pets,
-                        onTap: () => setState(() => _filter = _Filter.pets),
+                        selected: selectedFilter == _Filter.pets,
+                        onTap: () => filter.value = _Filter.pets,
                       ),
                     ],
                   ),
                   const SizedBox(height: 20),
                 ],
-                if (_loading)
+                if (failed)
+                  LoadFailedCard(
+                    title: 'Your care could not load',
+                    onRetry: () => ref
+                      ..invalidate(homeProvider)
+                      ..invalidate(careMembersProvider),
+                  )
+                else if (loading)
                   const SizedBox(height: 120)
-                else if (_members.isEmpty)
+                else if (members.isEmpty)
                   QuietCard(
                     icon: Icons.yard_outlined,
                     title: 'No one to care for yet',
@@ -195,8 +142,12 @@ class _MyCarePageState extends State<MyCarePage> {
                   )
                 else if (visible.isEmpty)
                   QuietCard(
-                    icon: _filter == _Filter.pets ? Icons.pets_outlined : Icons.spa_outlined,
-                    title: _filter == _Filter.pets ? 'No pets yet' : 'No plants yet',
+                    icon: selectedFilter == _Filter.pets
+                        ? Icons.pets_outlined
+                        : Icons.spa_outlined,
+                    title: selectedFilter == _Filter.pets
+                        ? 'No pets yet'
+                        : 'No plants yet',
                     body: 'This filter is empty. The rest of your home is still on All.',
                   )
                 else
@@ -232,92 +183,6 @@ class _MyCarePageState extends State<MyCarePage> {
       ),
     );
   }
-}
-
-class _Member {
-  _Member({
-    required this.id,
-    required this.name,
-    required this.type,
-    required this.createdAt,
-    required this.line,
-    required this.schedules,
-    this.species = '',
-    this.breed = '',
-    this.photoUrl,
-    this.photoBytes,
-    this.location,
-    this.notes,
-  });
-
-  factory _Member.plant(Plant plant, List<CareSchedule> schedules) {
-    final water = schedules.where((item) => item.action == CareAction.water);
-    final line = water.isEmpty ? '' : _plantLine(water.first);
-    return _Member(
-      id: plant.id,
-      name: plant.name,
-      type: CareSubjectType.plant,
-      species: plant.species,
-      photoUrl: plant.photoUrl,
-      photoBytes: plant.photoBytes,
-      location: plant.location,
-      notes: plant.notes,
-      createdAt: plant.createdAt,
-      line: line,
-      schedules: schedules,
-    );
-  }
-
-  factory _Member.pet(Pet pet, List<CareSchedule> schedules) {
-    final parts = <String>[];
-    for (final schedule in schedules) {
-      final times = schedule.timesPerDay;
-      if (schedule.action == CareAction.feed && times != null) {
-        parts.add('Feed ${times}x/day');
-      }
-      if (schedule.action == CareAction.waterBowl) {
-        parts.add(schedule.frequency == CareFrequency.daily ? 'Water bowl' : 'Water bowl · ${schedule.whenLabel}');
-      }
-      if (schedule.action == CareAction.walk && times != null) {
-        parts.add(
-          schedule.frequency == CareFrequency.daily
-              ? 'Walk ${times}x/day'
-              : 'Walk ${times}x · ${schedule.whenLabel}',
-        );
-      }
-    }
-    return _Member(
-      id: pet.id,
-      name: pet.name,
-      type: CareSubjectType.pet,
-      species: pet.species,
-      breed: pet.breed,
-      photoUrl: pet.photoUrl,
-      photoBytes: pet.photoBytes,
-      notes: pet.notes,
-      createdAt: pet.createdAt,
-      line: parts.join(' · '),
-      schedules: schedules,
-    );
-  }
-
-  final String id;
-  final String name;
-  final CareSubjectType type;
-  final String species;
-  final String breed;
-  final String? photoUrl;
-  final Uint8List? photoBytes;
-  final String? location;
-  final String? notes;
-  final DateTime createdAt;
-  final String line;
-  final List<CareSchedule> schedules;
-}
-
-String _plantLine(CareSchedule schedule) {
-  final reminder = schedule.reminders.isEmpty ? '' : ' · ${schedule.reminders.first.label}';
-  return '${schedule.whenLabel}$reminder';
 }
 
 class _FilterChip extends StatelessWidget {
@@ -360,7 +225,7 @@ class _FilterChip extends StatelessWidget {
 class _Card extends StatelessWidget {
   const _Card({required this.member});
 
-  final _Member member;
+  final CareMember member;
 
   @override
   Widget build(BuildContext context) {

@@ -2,228 +2,76 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/widgets/person_avatar.dart';
 import 'package:sprout/core/widgets/sprout_check.dart';
 import 'package:sprout/core/widgets/sprout_toast.dart';
 import 'package:sprout/data/models/care_enums.dart';
 import 'package:sprout/data/models/care_task.dart';
-import 'package:sprout/data/models/pet.dart';
-import 'package:sprout/data/models/plant.dart';
 import 'package:sprout/data/models/user_profile.dart';
-import 'package:sprout/data/services/auth_service.dart';
-import 'package:sprout/data/services/care_service.dart';
-import 'package:sprout/data/services/pet_service.dart';
-import 'package:sprout/data/services/plant_service.dart';
-import 'package:sprout/data/services/profile_service.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/features/care/add_care_sheet.dart';
 import 'package:sprout/features/care/care_sheet.dart';
 import 'package:sprout/features/shell/care_nav.dart';
 import 'package:sprout/features/shell/quiet_card.dart';
 import 'package:sprout/features/today/bell_sheet.dart';
 import 'package:sprout/features/today/calendar_sheet.dart';
+import 'package:sprout/features/today/today_providers.dart';
 
-class TodayPage extends StatefulWidget {
+class TodayPage extends ConsumerWidget {
   const TodayPage({super.key});
 
-  @override
-  State<TodayPage> createState() => _TodayPageState();
-}
-
-class _TodayPageState extends State<TodayPage> {
-  List<CareTask> _today = [];
-  List<CareTask> _upcoming = [];
-  Map<String, String> _photos = {};
-  var _loading = true;
-  var _hasHome = false;
-  var _loadGen = 0;
-  var _unread = 0;
-  AuthService? _auth;
-  CareService? _care;
-  PlantService? _plants;
-  PetService? _pets;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _auth = context.read<AuthService>()..addListener(_refresh);
-      _care = context.read<CareService>()..addListener(_refresh);
-      _plants = context.read<PlantService>()..addListener(_refresh);
-      _pets = context.read<PetService>()..addListener(_refresh);
-      _load();
-    });
-  }
-
-  @override
-  void dispose() {
-    _auth?.removeListener(_refresh);
-    _care?.removeListener(_refresh);
-    _plants?.removeListener(_refresh);
-    _pets?.removeListener(_refresh);
-    super.dispose();
-  }
-
-  void _refresh() {
-    _load(notes: false);
-  }
-
-  Future<void> _load({bool notes = true}) async {
-    final gen = ++_loadGen;
-    final care = _care ?? context.read<CareService>();
-    final plants = _plants ?? context.read<PlantService>();
-    final pets = _pets ?? context.read<PetService>();
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    List<CareTask> tasks;
-    List<Plant> plantList;
-    List<Pet> petList;
-    List<CareTask> upcoming;
-    try {
-      final loaded = await (
-        care.tasksFor(today),
-        plants.listPlants(),
-        pets.listPets(),
-        care.upcomingAfter(today),
-      ).wait;
-      tasks = loaded.$1;
-      plantList = loaded.$2;
-      petList = loaded.$3;
-      upcoming = loaded.$4;
-    } catch (_) {
-      if (!mounted || gen != _loadGen) return;
-      setState(() => _loading = false);
-      showSproutToast(
-        context,
-        'Your care could not load. Check your connection and try again.',
-        error: true,
-      );
-      return;
-    }
-    if (!mounted || gen != _loadGen) return;
-    final photos = <String, String>{};
-    for (final plant in plantList) {
-      final url = plant.photoUrl;
-      if (url != null) photos[plant.id] = url;
-    }
-    for (final pet in petList) {
-      final url = pet.photoUrl;
-      if (url != null) photos[pet.id] = url;
-    }
-    final homeIds = {
-      for (final plant in plantList) plant.id,
-      for (final pet in petList) pet.id,
-    };
-    setState(() {
-      _today = tasks.where((task) => homeIds.contains(task.subjectId)).toList()
-        ..sort((a, b) {
-          final byOpen = _openRank(a).compareTo(_openRank(b));
-          if (byOpen != 0) return byOpen;
-          return a.dueAt.compareTo(b.dueAt);
-        });
-      _photos = photos;
-      _upcoming = upcoming
-          .where((task) => homeIds.contains(task.subjectId))
-          .toList();
-      _hasHome = homeIds.isNotEmpty;
-      _loading = false;
-    });
-    if (notes) await _loadNotes();
-  }
-
-  int _openRank(CareTask task) {
-    if (task.isOverdue()) return 0;
-    if (task.status == TaskStatus.due) return 1;
-    return 2;
-  }
-
-  Future<void> _loadNotes() async {
-    final notes = await context.read<ProfileService>().notifications();
-    if (!mounted) return;
-    setState(() => _unread = notes.where((note) => !note.read).length);
-  }
-
-  Future<void> _openBell() async {
+  Future<void> _openBell(BuildContext context, WidgetRef ref) async {
     await showBellSheet(context);
-    if (mounted) await _loadNotes();
+    if (context.mounted) ref.invalidate(unreadNotesProvider);
   }
 
-  Future<void> _toggle(CareTask task) async {
-    setState(() {
-      _today = [
-        for (final item in _today)
-          if (item.id == task.id)
-            item.copyWith(
-              status: item.status == TaskStatus.done
-                  ? TaskStatus.due
-                  : TaskStatus.done,
-            )
-          else
-            item,
-      ];
-    });
-    final care = context.read<CareService>();
+  Future<void> _save(
+    BuildContext context,
+    Future<void> Function() change,
+  ) async {
     final toast = sproutToaster(context);
     try {
-      if (task.status == TaskStatus.done) {
-        await care.reopenTask(task.id);
-      } else {
-        await care.completeTask(task.id);
-      }
+      await change();
     } catch (_) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       toast.show(
         'That did not save. Check your connection and tap again.',
         error: true,
       );
-      await _load(notes: false);
-    }
-  }
-
-  Future<void> _skip(CareTask task) async {
-    setState(() {
-      _today = [
-        for (final item in _today)
-          if (item.id == task.id)
-            item.copyWith(
-              status: item.status == TaskStatus.skipped
-                  ? TaskStatus.due
-                  : TaskStatus.skipped,
-            )
-          else
-            item,
-      ];
-    });
-    final care = context.read<CareService>();
-    final toast = sproutToaster(context);
-    try {
-      if (task.status == TaskStatus.skipped) {
-        await care.reopenTask(task.id);
-      } else {
-        await care.skipTask(task.id);
-      }
-    } catch (_) {
-      if (!mounted) return;
-      toast.show(
-        'That did not save. Check your connection and tap again.',
-        error: true,
-      );
-      await _load(notes: false);
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final user = context.watch<AuthService>().currentUser;
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen(todayCareProvider, (previous, next) {
+      // A first load that fails shows its own card. This covers a reload
+      // that fails while the earlier list is still on screen.
+      final reloadFailed = next.hasError && !next.isLoading && next.hasValue;
+      if (reloadFailed && (previous?.isLoading ?? false)) {
+        showSproutToast(
+          context,
+          'Your care could not load. Check your connection and try again.',
+          error: true,
+        );
+      }
+    });
+    final care = ref.watch(todayCareProvider);
+    final notifier = ref.read(todayCareProvider.notifier);
+    final view = care.value ?? TodayCare.empty;
+    final failed = care.failedEmpty;
+    final loading = !care.hasValue && !failed;
+    final unread = ref.watch(unreadNotesProvider).value ?? 0;
+    final user = ref.watch(currentUserProvider);
     final name = user?.name ?? 'there';
     final first = name.trim().split(RegExp(r'\s+')).first;
-    final done = _today.where((task) => task.closed).length;
-    final overdue = _today.where((task) => task.isOverdue()).length;
-    final caughtUp = _today.isNotEmpty && done == _today.length;
-    final noHome = !_loading && !_hasHome;
-    final idle = !_loading && _hasHome && _today.isEmpty;
+    final todayTasks = view.today;
+    final done = todayTasks.where((task) => task.closed).length;
+    final overdue = todayTasks.where((task) => task.isOverdue()).length;
+    final caughtUp = todayTasks.isNotEmpty && done == todayTasks.length;
+    final noHome = !loading && !failed && !view.hasHome;
+    final idle = !loading && view.hasHome && todayTasks.isEmpty;
 
     return Scaffold(
       backgroundColor: AppColors.onboardingPaper,
@@ -237,12 +85,12 @@ class _TodayPageState extends State<TodayPage> {
                 _Header(
                   firstName: first,
                   user: user,
-                  unread: _unread,
-                  onBell: _openBell,
+                  unread: unread,
+                  onBell: () => _openBell(context, ref),
                 ),
                 const SizedBox(height: 24),
                 _Hero(
-                  count: _today.length,
+                  count: todayTasks.length,
                   caughtUp: caughtUp,
                   quiet: noHome,
                   idle: idle,
@@ -251,12 +99,19 @@ class _TodayPageState extends State<TodayPage> {
                 const SizedBox(height: 26),
                 _SectionTitle(
                   title: "Today's care",
-                  trailing: _loading || noHome || idle
+                  trailing: loading || failed || noHome || idle
                       ? ''
-                      : '$done/${_today.length} complete',
+                      : '$done/${todayTasks.length} complete',
                 ),
                 const SizedBox(height: 12),
-                if (noHome)
+                if (failed)
+                  LoadFailedCard(
+                    title: 'Your care could not load',
+                    onRetry: () => ref
+                      ..invalidate(homeProvider)
+                      ..invalidate(todayCareProvider),
+                  )
+                else if (noHome)
                   QuietCard(
                     icon: Icons.spa_outlined,
                     title: 'Your home is empty',
@@ -271,12 +126,13 @@ class _TodayPageState extends State<TodayPage> {
                     body: 'Their next care is further down the week.',
                   )
                 else
-                  for (final task in _today) ...[
+                  for (final task in todayTasks) ...[
                     _TaskCard(
                       task: task,
-                      photo: _photos[task.subjectId],
-                      onComplete: () => _toggle(task),
-                      onSkip: () => _skip(task),
+                      photo: view.photos[task.subjectId],
+                      onComplete: () =>
+                          _save(context, () => notifier.toggle(task)),
+                      onSkip: () => _save(context, () => notifier.skip(task)),
                     ),
                     const SizedBox(height: 9),
                   ],
@@ -284,20 +140,20 @@ class _TodayPageState extends State<TodayPage> {
                   const SizedBox(height: 1),
                   const _CaughtUpNote(),
                 ],
-                if (!noHome && !_loading) ...[
+                if (!noHome && !loading && !failed) ...[
                   const SizedBox(height: 18),
                   const _SectionTitle(
                     title: 'Coming up',
                     trailing: _CalendarLink(),
                   ),
                   const SizedBox(height: 12),
-                  if (_upcoming.isEmpty)
+                  if (view.upcoming.isEmpty)
                     const _QuietLine('Nothing else this week.')
                   else
-                    for (final task in _upcoming) ...[
+                    for (final task in view.upcoming) ...[
                       _UpcomingCard(
                         task: task,
-                        photo: _photos[task.subjectId],
+                        photo: view.photos[task.subjectId],
                       ),
                       const SizedBox(height: 9),
                     ],

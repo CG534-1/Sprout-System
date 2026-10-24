@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sprout/core/app_exception.dart';
@@ -62,24 +63,22 @@ Future<void> showAddCareSheet(BuildContext context) {
   );
 }
 
-class _KindSheet extends StatefulWidget {
+class _KindSheet extends HookWidget {
   const _KindSheet();
 
   @override
-  State<_KindSheet> createState() => _KindSheetState();
-}
-
-class _KindSheetState extends State<_KindSheet> {
-  var _plant = true;
-
-  void _next() {
-    final router = GoRouter.of(context);
-    Navigator.of(context).pop();
-    router.push(AppRoutes.careDetails, extra: CareDetailsArgs(plant: _plant));
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final plant = useState(true);
+
+    void next() {
+      final router = GoRouter.of(context);
+      Navigator.of(context).pop();
+      router.push(
+        AppRoutes.careDetails,
+        extra: CareDetailsArgs(plant: plant.value),
+      );
+    }
+
     return CareSheet(
       child: ListView(
         shrinkWrap: true,
@@ -104,16 +103,16 @@ class _KindSheetState extends State<_KindSheet> {
                         emoji: '🌿',
                         title: 'Plant',
                         subtitle: 'Watering reminders & schedule',
-                        selected: _plant,
-                        onTap: () => setState(() => _plant = true),
+                        selected: plant.value,
+                        onTap: () => plant.value = true,
                       ),
                       const SizedBox(width: 10),
                       CareChoice(
                         emoji: '🐾',
                         title: 'Pet',
                         subtitle: 'Feeding, water bowl & walks',
-                        selected: !_plant,
-                        onTap: () => setState(() => _plant = false),
+                        selected: !plant.value,
+                        onTap: () => plant.value = false,
                       ),
                     ],
                   ),
@@ -121,7 +120,7 @@ class _KindSheetState extends State<_KindSheet> {
                 CareActionButton(
                   label: 'Next',
                   enabled: true,
-                  onPressed: _next,
+                  onPressed: next,
                 ),
                 CareCancelButton(
                   onPressed: () => Navigator.of(context).pop(),
@@ -138,111 +137,194 @@ class _KindSheetState extends State<_KindSheet> {
 /// The name, photo and notes, for a new plant or pet or for one already in
 /// your care. A page rather than a sheet, because there is a lot to fill in
 /// and the plan still has to follow.
-class CareDetailsPage extends StatefulWidget {
+class CareDetailsPage extends HookWidget {
   const CareDetailsPage({super.key, required this.args});
 
   final CareDetailsArgs args;
 
   @override
-  State<CareDetailsPage> createState() => _CareDetailsPageState();
-}
-
-class _CareDetailsPageState extends State<CareDetailsPage> {
-  late final TextEditingController _name;
-  late final TextEditingController _species;
-  late final TextEditingController _breed;
-  late final TextEditingController _location;
-  late final TextEditingController _notes;
-  final _nameFocus = FocusNode();
-  final _speciesFocus = FocusNode();
-  final _breedFocus = FocusNode();
-  final _locationFocus = FocusNode();
-  final _notesFocus = FocusNode();
-  var _picking = false;
-  Uint8List? _photo;
-
-  CareDraft? get _existing => widget.args.existing;
-
-  bool get _plant => widget.args.plant;
-
-  @override
-  void initState() {
-    super.initState();
-    final existing = _existing;
-    _name = TextEditingController(text: existing?.name ?? '');
-    _species = TextEditingController(text: existing?.species ?? '');
-    _breed = TextEditingController(text: existing?.breed ?? '');
-    _location = TextEditingController(text: existing?.location ?? '');
-    _notes = TextEditingController(text: existing?.notes ?? '');
-    _photo = existing?.photoBytes;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      FocusManager.instance.primaryFocus?.unfocus();
-    });
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _species.dispose();
-    _breed.dispose();
-    _location.dispose();
-    _notes.dispose();
-    _nameFocus.dispose();
-    _speciesFocus.dispose();
-    _breedFocus.dispose();
-    _locationFocus.dispose();
-    _notesFocus.dispose();
-    super.dispose();
-  }
-
-  bool get _named => _name.text.trim().isNotEmpty;
-
-  void _leave() {
-    if (context.canPop()) {
-      context.pop();
-      return;
-    }
-    context.go(AppRoutes.myCare);
-  }
-
-  /// Hands over to the plan, which is a page of its own because pet plans are
-  /// long. This step is left behind, so a back from the plan lands on My care
-  /// rather than halfway through the form.
-  void _openSchedule() {
-    if (!_named) return;
-    final args = CareScheduleArgs(
-      plant: _plant,
-      name: _name.text.trim(),
-      species: _species.text.trim(),
-      breed: _breed.text.trim(),
-      location: _location.text.trim(),
-      notes: _notes.text.trim(),
-      photo: _photo,
-      existing: _existing,
-    );
-    final router = GoRouter.of(context);
-    if (router.canPop()) router.pop();
-    router.push(AppRoutes.schedule, extra: args);
-  }
-
-  Future<void> _pickPhoto(BuildContext from) async {
-    if (_picking) return;
-    _picking = true;
-    try {
-      final bytes = await pickCarePhoto(from: from);
-      if (!mounted) return;
-      if (bytes != null) setState(() => _photo = bytes);
-    } on AppException catch (error) {
-      if (!mounted) return;
-      showSproutToast(context, error.message, error: true);
-    } finally {
-      _picking = false;
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final existing = _existing;
+    final existing = args.existing;
+    final plant = args.plant;
+    final name = useTextEditingController(text: existing?.name ?? '');
+    final species = useTextEditingController(text: existing?.species ?? '');
+    final breed = useTextEditingController(text: existing?.breed ?? '');
+    final location = useTextEditingController(text: existing?.location ?? '');
+    final notes = useTextEditingController(text: existing?.notes ?? '');
+    // Only the name decides whether the plan can open.
+    useListenable(name);
+    final nameFocus = useFocusNode();
+    final speciesFocus = useFocusNode();
+    final breedFocus = useFocusNode();
+    final locationFocus = useFocusNode();
+    final notesFocus = useFocusNode();
+    final photo = useState(existing?.photoBytes);
+    // Guards against a second tap while the picker is open. It does not
+    // repaint the page, so it lives in a ref rather than in state.
+    final picking = useRef(false);
+
+    useEffect(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        FocusManager.instance.primaryFocus?.unfocus();
+      });
+      return null;
+    }, const []);
+
+    final named = name.text.trim().isNotEmpty;
+
+    void leave() {
+      if (context.canPop()) {
+        context.pop();
+        return;
+      }
+      context.go(AppRoutes.myCare);
+    }
+
+    /// Hands over to the plan, which is a page of its own because pet plans
+    /// are long. This step is left behind, so a back from the plan lands on
+    /// My care rather than halfway through the form.
+    void openSchedule() {
+      if (!named) return;
+      final scheduleArgs = CareScheduleArgs(
+        plant: plant,
+        name: name.text.trim(),
+        species: species.text.trim(),
+        breed: breed.text.trim(),
+        location: location.text.trim(),
+        notes: notes.text.trim(),
+        photo: photo.value,
+        existing: existing,
+      );
+      final router = GoRouter.of(context);
+      if (router.canPop()) router.pop();
+      router.push(AppRoutes.schedule, extra: scheduleArgs);
+    }
+
+    Future<void> pickPhoto(BuildContext from) async {
+      if (picking.value) return;
+      picking.value = true;
+      try {
+        final bytes = await pickCarePhoto(from: from);
+        if (!context.mounted) return;
+        if (bytes != null) photo.value = bytes;
+      } on AppException catch (error) {
+        if (!context.mounted) return;
+        showSproutToast(context, error.message, error: true);
+      } finally {
+        picking.value = false;
+      }
+    }
+
+    void ignore(String _) {}
+
+    List<Widget> nameFields() {
+      return [
+        const CareLabel('PHOTO', top: 18),
+        Builder(
+          builder: (context) => GestureDetector(
+            onTap: () => pickPhoto(context),
+            child: Row(
+            children: [
+              SizedBox(
+                width: 64,
+                height: 64,
+                child: picking.value
+                    ? DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: careField,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Center(
+                          child: SproutSpinner(color: AppColors.sproutGreen),
+                        ),
+                      )
+                    : photo.value != null || existing?.photoUrl != null
+                    ? SproutCirclePhoto(
+                        url: photo.value == null ? existing?.photoUrl : null,
+                        bytes: photo.value,
+                      )
+                    : DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: careField,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(
+                            plant ? '🌿' : '🐾',
+                            style: const TextStyle(fontSize: 24),
+                          ),
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                picking.value
+                    ? 'Opening your photos'
+                    : photo.value == null && existing?.photoUrl == null
+                    ? 'Add a photo'
+                    : 'Change photo',
+                style: GoogleFonts.dmSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF006134),
+                ),
+              ),
+            ],
+          ),
+          ),
+        ),
+        CareLabel(plant ? 'PLANT NAME' : 'PET NAME'),
+        CareNameField(
+          controller: name,
+          focusNode: nameFocus,
+          hint: plant ? 'e.g. Monstera, Snake Plant…' : 'e.g. Milo',
+          textInputAction: TextInputAction.next,
+          onSubmitted: (_) => speciesFocus.requestFocus(),
+          onChanged: ignore,
+        ),
+        CareLabel(plant ? 'SPECIES (OPTIONAL)' : 'PET TYPE (OPTIONAL)'),
+        CareNameField(
+          controller: species,
+          focusNode: speciesFocus,
+          hint: plant ? 'e.g. Monstera deliciosa' : 'e.g. Dog',
+          textInputAction: TextInputAction.next,
+          onSubmitted: (_) =>
+              plant ? locationFocus.requestFocus() : breedFocus.requestFocus(),
+          onChanged: ignore,
+        ),
+        if (!plant) ...[
+          const CareLabel('BREED (OPTIONAL)'),
+          CareNameField(
+            controller: breed,
+            focusNode: breedFocus,
+            hint: 'e.g. Golden Retriever',
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) => notesFocus.requestFocus(),
+            onChanged: ignore,
+          ),
+        ],
+        if (plant) ...[
+          const CareLabel('WHERE IT LIVES'),
+          CareNameField(
+            controller: location,
+            focusNode: locationFocus,
+            hint: 'e.g. Living room',
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) => notesFocus.requestFocus(),
+            onChanged: ignore,
+          ),
+        ],
+        const CareLabel('NOTES'),
+        CareNameField(
+          controller: notes,
+          focusNode: notesFocus,
+          hint: 'Anything worth remembering',
+          maxLines: 3,
+          onChanged: ignore,
+        ),
+      ];
+    }
+
     return Focus(
       autofocus: true,
       child: Scaffold(
@@ -254,11 +336,11 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
               CarePageHeader(
                 title: existing != null
                     ? 'Edit details'
-                    : _plant
+                    : plant
                     ? 'Add a plant'
                     : 'Add a pet',
                 subtitle: existing?.name ?? '',
-                onBack: _leave,
+                onBack: leave,
               ),
               Expanded(
                 child: ListView(
@@ -268,7 +350,7 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
                     22,
                     24 + MediaQuery.viewInsetsOf(context).bottom,
                   ),
-                  children: _nameFields(),
+                  children: nameFields(),
                 ),
               ),
               Padding(
@@ -282,11 +364,11 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
                   children: [
                     CareActionButton(
                       label: 'Set up care schedule →',
-                      enabled: _named,
+                      enabled: named,
                       top: 10,
-                      onPressed: _openSchedule,
+                      onPressed: openSchedule,
                     ),
-                    CareCancelButton(onPressed: _leave),
+                    CareCancelButton(onPressed: leave),
                   ],
                 ),
               ),
@@ -295,114 +377,5 @@ class _CareDetailsPageState extends State<CareDetailsPage> {
         ),
       ),
     );
-  }
-
-  List<Widget> _nameFields() {
-    final plant = _plant;
-    return [
-      const CareLabel('PHOTO', top: 18),
-      Builder(
-        builder: (context) => GestureDetector(
-          onTap: () => _pickPhoto(context),
-          child: Row(
-          children: [
-            SizedBox(
-              width: 64,
-              height: 64,
-              child: _picking
-                  ? DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: careField,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Center(
-                        child: SproutSpinner(color: AppColors.sproutGreen),
-                      ),
-                    )
-                  : _photo != null || _existing?.photoUrl != null
-                  ? SproutCirclePhoto(
-                      url: _photo == null ? _existing?.photoUrl : null,
-                      bytes: _photo,
-                    )
-                  : DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: careField,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Text(
-                          plant ? '🌿' : '🐾',
-                          style: const TextStyle(fontSize: 24),
-                        ),
-                      ),
-                    ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              _picking
-                  ? 'Opening your photos'
-                  : _photo == null && _existing?.photoUrl == null
-                  ? 'Add a photo'
-                  : 'Change photo',
-              style: GoogleFonts.dmSans(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF006134),
-              ),
-            ),
-          ],
-        ),
-        ),
-      ),
-      CareLabel(plant ? 'PLANT NAME' : 'PET NAME'),
-      CareNameField(
-        controller: _name,
-        focusNode: _nameFocus,
-        hint: plant ? 'e.g. Monstera, Snake Plant…' : 'e.g. Milo',
-        textInputAction: TextInputAction.next,
-        onSubmitted: (_) => _speciesFocus.requestFocus(),
-        onChanged: (_) => setState(() {}),
-      ),
-      CareLabel(plant ? 'SPECIES (OPTIONAL)' : 'PET TYPE (OPTIONAL)'),
-      CareNameField(
-        controller: _species,
-        focusNode: _speciesFocus,
-        hint: plant ? 'e.g. Monstera deliciosa' : 'e.g. Dog',
-        textInputAction: TextInputAction.next,
-        onSubmitted: (_) =>
-            plant ? _locationFocus.requestFocus() : _breedFocus.requestFocus(),
-        onChanged: (_) => setState(() {}),
-      ),
-      if (!plant) ...[
-        const CareLabel('BREED (OPTIONAL)'),
-        CareNameField(
-          controller: _breed,
-          focusNode: _breedFocus,
-          hint: 'e.g. Golden Retriever',
-          textInputAction: TextInputAction.next,
-          onSubmitted: (_) => _notesFocus.requestFocus(),
-          onChanged: (_) => setState(() {}),
-        ),
-      ],
-      if (plant) ...[
-        const CareLabel('WHERE IT LIVES'),
-        CareNameField(
-          controller: _location,
-          focusNode: _locationFocus,
-          hint: 'e.g. Living room',
-          textInputAction: TextInputAction.next,
-          onSubmitted: (_) => _notesFocus.requestFocus(),
-          onChanged: (_) => setState(() {}),
-        ),
-      ],
-      const CareLabel('NOTES'),
-      CareNameField(
-        controller: _notes,
-        focusNode: _notesFocus,
-        hint: 'Anything worth remembering',
-        maxLines: 3,
-        onChanged: (_) => setState(() {}),
-      ),
-    ];
   }
 }

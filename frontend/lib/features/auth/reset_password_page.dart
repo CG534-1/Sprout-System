@@ -1,73 +1,59 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:sprout/data/providers.dart';
 import 'package:sprout/core/app_exception.dart';
 import 'package:sprout/core/router/routes.dart';
 import 'package:sprout/core/theme/app_colors.dart';
 import 'package:sprout/core/widgets/sprout_toast.dart';
-import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/features/auth/auth_widgets.dart';
 
-class ResetPasswordPage extends StatefulWidget {
+class ResetPasswordPage extends HookConsumerWidget {
   const ResetPasswordPage({super.key});
 
   @override
-  State<ResetPasswordPage> createState() => _ResetPasswordPageState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final password = useTextEditingController();
+    useListenable(password);
+    final error = useState<String?>(null);
+    final saving = useState(false);
+    final obscure = useState(true);
+    final ready = PasswordRules.satisfied(password.text);
 
-class _ResetPasswordPageState extends State<ResetPasswordPage> {
-  final _password = TextEditingController();
-  String? _error;
-  var _saving = false;
-  var _obscure = true;
+    useEffect(() {
+      void clearError() => error.value = null;
+      password.addListener(clearError);
+      return () => password.removeListener(clearError);
+    }, const []);
 
-  bool get _ready => PasswordRules.satisfied(_password.text);
-
-  @override
-  void initState() {
-    super.initState();
-    _password.addListener(() => setState(() => _error = null));
-  }
-
-  @override
-  void dispose() {
-    _password.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    if (!_ready || _saving) return;
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    final toast = sproutToaster(context);
-    try {
-      await context.read<AuthService>().setNewPassword(
-        password: _password.text,
-      );
-      if (!mounted) return;
-      toast.show('Password updated. Sign in with your new password.');
-      context.go(AppRoutes.signIn);
-    } on AppException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _saving = false;
-        _error = error.message;
-      });
+    Future<void> save() async {
+      if (!ready || saving.value) return;
+      saving.value = true;
+      error.value = null;
+      final toast = sproutToaster(context);
+      try {
+        await ref.read(authServiceProvider).setNewPassword(
+          password: password.text,
+        );
+        if (!context.mounted) return;
+        toast.show('Password updated. Sign in with your new password.');
+        context.go(AppRoutes.signIn);
+      } on AppException catch (failure) {
+        if (!context.mounted) return;
+        saving.value = false;
+        error.value = failure.message;
+      }
     }
-  }
 
-  Future<void> _cancel() async {
-    if (_saving) return;
-    await context.read<AuthService>().signOut();
-    if (!mounted) return;
-    context.go(AppRoutes.signIn);
-  }
+    Future<void> cancel() async {
+      if (saving.value) return;
+      await ref.read(authServiceProvider).signOut();
+      if (!context.mounted) return;
+      context.go(AppRoutes.signIn);
+    }
 
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.onboardingPaper,
       resizeToAvoidBottomInset: false,
@@ -78,7 +64,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
             children: [
               Align(
                 alignment: Alignment.centerLeft,
-                child: AuthBackButton(onPressed: _cancel),
+                child: AuthBackButton(onPressed: cancel),
               ),
               Expanded(
                 child: ListView(
@@ -104,14 +90,14 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                     const SizedBox(height: 22),
                     AuthField(
                       label: 'PASSWORD',
-                      controller: _password,
+                      controller: password,
                       hint: 'New password',
-                      error: _error,
-                      obscure: _obscure,
+                      error: error.value,
+                      obscure: obscure.value,
                       suffix: IconButton(
-                        onPressed: () => setState(() => _obscure = !_obscure),
+                        onPressed: () => obscure.value = !obscure.value,
                         icon: Icon(
-                          _obscure
+                          obscure.value
                               ? Icons.visibility_off_outlined
                               : Icons.visibility_outlined,
                           color: AppColors.ink,
@@ -119,17 +105,17 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                       ),
                     ),
                     const SizedBox(height: 14),
-                    PasswordRules(value: _password.text),
+                    PasswordRules(value: password.text),
                   ],
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.only(left: 6),
                 child: SlabButton(
-                  label: _saving ? 'Saving' : 'Save password',
-                  enabled: _ready && !_saving,
-                  busy: _saving,
-                  onPressed: _save,
+                  label: saving.value ? 'Saving' : 'Save password',
+                  enabled: ready && !saving.value,
+                  busy: saving.value,
+                  onPressed: save,
                 ),
               ),
             ],
