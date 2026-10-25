@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package sprout.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// The bell on Today: reminders, overdue alerts, and the daily summary that
+// were sent to this account.
+service NotificationService {
+  // Lists the newest notifications for the signed-in account. Notes read
+  // before today (in the caller's time zone) are cleared first.
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse) {}
+}
+
+// The account comes from the Authorization header, so there is nothing to send.
+message ListNotificationsRequest {}
+
+message ListNotificationsResponse {
+  // Newest first, at most 50.
+  repeated Notification notifications = 1;
+}
+
+message Notification {
+  string id = 1;
+  string title = 2;
+  string body = 3;
+  google.protobuf.Timestamp create_time = 4;
+  // True once the bell panel has been opened after this note arrived.
+  bool read = 5;
+}

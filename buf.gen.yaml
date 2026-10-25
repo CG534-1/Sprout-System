@@ -1,0 +1,17 @@
+# Run from the repo root: buf generate
+# Both out folders are generated only, and `clean` empties them first.
+version: v2
+clean: true
+plugins:
+  # Messages and service descriptors for the Node API (plain JS, ESM).
+  - remote: buf.build/bufbuild/es:v2.16.0
+    out: backend/src/gen
+    opt:
+      - target=js
+      - import_extension=js
+  # Message classes for Flutter. v25.1.0 pairs with package:protobuf 6.1.
+  - remote: buf.build/protocolbuffers/dart:v25.1.0
+    out: frontend/lib/gen
+  # Typed Connect clients for Flutter, built on those message classes.
+  - remote: buf.build/connectrpc/dart:v2.0.1
+    out: frontend/lib/gen

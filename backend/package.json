@@ -10,6 +10,10 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@bufbuild/protobuf": "^2.16.0",
+    "@connectrpc/connect": "^2.2.0",
+    "@connectrpc/connect-express": "^2.2.0",
+    "@connectrpc/connect-node": "^2.2.0",
     "@supabase/supabase-js": "^2.49.4",
     "cors": "^2.8.5",
     "express": "^4.21.2",

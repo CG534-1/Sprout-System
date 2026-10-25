@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
-import { createClient } from '@supabase/supabase-js';
+import { cors as connectCors } from '@connectrpc/connect';
+import { expressConnectMiddleware } from '@connectrpc/connect-express';
 import {
   clocksEqual,
   duesOnCycle,
@@ -13,14 +14,28 @@ import {
   wallToUtc,
 } from './care.js';
 import { dispatchForUser, dispatchReminders } from './dispatch.js';
+import { authenticate, httpError, service } from './auth.js';
+import { requireSession, routes } from './connect.js';
 import { lookupSignupEmail } from './signup.js';
+import { listNotes } from './notifications.js';
+import { ensureSettings, missingColumn } from './settings.js';
 
 const bucket = 'care-media';
 
 export function createApp() {
   const app = express();
   const origin = process.env.CLIENT_ORIGIN;
-  app.use(cors({ origin: origin ? origin.split(',').map((item) => item.trim()) : true }));
+  app.use(
+    cors({
+      origin: origin ? origin.split(',').map((item) => item.trim()) : true,
+      // Lets browsers read Connect's error and encoding headers.
+      exposedHeaders: connectCors.exposedHeaders,
+    }),
+  );
+  // Connect reads its own request bodies, so it goes before express.json().
+  // Its paths (/sprout.v1.*) sit outside /api, so the REST auth middleware
+  // does not run on them; requireSession does the same check instead.
+  app.use(expressConnectMiddleware({ routes, interceptors: [requireSession] }));
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/health', (_req, res) => {
@@ -68,31 +83,19 @@ export function createApp() {
 
   app.use('/api', async (req, res, next) => {
     try {
-      if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-        res.status(503).json({ message: 'API is not configured.' });
-        return;
-      }
-      const header = req.headers.authorization ?? '';
-      const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-      if (!token) {
-        res.status(401).json({ message: 'Sign in to continue.' });
-        return;
-      }
-      const admin = service();
-      const { data, error } = await admin.auth.getUser(token);
-      if (error || !data.user) {
-        res.status(401).json({ message: 'Sign in to continue.' });
-        return;
-      }
-      req.user = data.user;
-      req.admin = admin;
-      await ensureSettings(admin, data.user.id, utcOffsetMinutes(req));
-      req.db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
-        accessToken: async () => token,
-        auth: { persistSession: false, autoRefreshToken: false },
-      });
+      Object.assign(
+        req,
+        await authenticate({
+          authorization: req.headers.authorization,
+          offsetMinutes: utcOffsetMinutes(req),
+        }),
+      );
       next();
     } catch (error) {
+      if (error.status === 401) {
+        res.status(401).json({ message: error.message });
+        return;
+      }
       next(error);
     }
   });
@@ -175,15 +178,7 @@ export function createApp() {
 
   app.get('/api/me/notifications', async (req, res, next) => {
     try {
-      const offset = utcOffsetMinutes(req);
-      await purgeReadNotes(req.db, req.user.id, offset);
-      const { data, error } = await req.db
-        .from('push_notifications')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (error) throw error;
-      res.json((data ?? []).map(noteJson));
+      res.json(await listNotes(req.db, req.user.id, utcOffsetMinutes(req)));
     } catch (error) {
       next(error);
     }
@@ -560,21 +555,6 @@ export function createApp() {
   return app;
 }
 
-function service() {
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw httpError(503, 'API is not configured.');
-  }
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-function httpError(status, message) {
-  const error = new Error(message);
-  error.status = status;
-  return error;
-}
-
 function emptyToNull(value) {
   if (value == null) return null;
   const trimmed = String(value).trim();
@@ -674,94 +654,12 @@ function preferredSlotsFrom(value) {
   return slots.length ? slots : ['morning'];
 }
 
-function missingColumn(error, column) {
-  const text = `${error?.message ?? ''} ${error?.details ?? ''} ${error?.hint ?? ''} ${error?.code ?? ''}`;
-  return text.includes(column) || error?.code === 'PGRST204' || error?.code === '42703';
-}
-
 async function dispatchNow(admin, userId) {
   try {
     await dispatchForUser(admin, userId);
   } catch (error) {
     console.error(error);
   }
-}
-
-async function purgeReadNotes(db, userId, offsetMinutes) {
-  const today = localDayKey(new Date().toISOString(), offsetMinutes);
-  const [year, month, day] = today.split('-').map(Number);
-  const startOfToday = wallToUtc(year, month, day, 0, offsetMinutes, 0).toISOString();
-  const { error } = await db
-    .from('push_notifications')
-    .delete()
-    .eq('user_id', userId)
-    .not('read_at', 'is', null)
-    .lt('read_at', startOfToday);
-  if (error) throw error;
-}
-
-async function ensureSettings(admin, userId, offsetMinutes = 0) {
-  const { data: existing, error } = await admin
-    .from('user_settings')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (error) throw error;
-  if (existing) {
-    if (existing.utc_offset_minutes !== offsetMinutes) {
-      const { data, error: updateError } = await admin
-        .from('user_settings')
-        .update({ utc_offset_minutes: offsetMinutes })
-        .eq('user_id', userId)
-        .select('*')
-        .single();
-      if (updateError) throw updateError;
-      return data;
-    }
-    return existing;
-  }
-  const { data, error: insertError } = await admin
-    .from('user_settings')
-    .insert({
-      user_id: userId,
-      reminders: true,
-      overdue: true,
-      summary: true,
-      tips: false,
-      preferred_slot: 'morning',
-      lead: '30 min before',
-      utc_offset_minutes: offsetMinutes,
-      slot_hours: {},
-    })
-    .select('*')
-    .single();
-  if (insertError) {
-    // Signup can hit /api before a profile row exists.
-    if (insertError.code === '23503') return null;
-    if (missingColumn(insertError, 'slot_hours')) {
-      const retry = await admin
-        .from('user_settings')
-        .insert({
-          user_id: userId,
-          reminders: true,
-          overdue: true,
-          summary: true,
-          tips: false,
-          preferred_slot: 'morning',
-          lead: '30 min before',
-          utc_offset_minutes: offsetMinutes,
-        })
-        .select('*')
-        .single();
-      if (retry.error) {
-        if (retry.error.code === '23503') return null;
-        throw retry.error;
-      }
-      return retry.data;
-    }
-    throw insertError;
-  }
-  return data;
 }
 
 async function upsertSettings(db, patch) {
@@ -820,16 +718,6 @@ async function petJson(admin, row) {
     photoUrl: await signedUrl(admin, row.photo_path),
     notes: row.notes,
     createdAt: row.created_at,
-  };
-}
-
-function noteJson(row) {
-  return {
-    id: row.id,
-    title: row.title,
-    body: row.body,
-    createdAt: row.created_at,
-    read: row.read_at != null,
   };
 }
 

@@ -4,11 +4,16 @@ import 'package:sprout/data/models/care_settings.dart';
 import 'package:sprout/data/models/push_note.dart';
 import 'package:sprout/data/models/user_profile.dart';
 import 'package:sprout/data/services/profile_service.dart';
+import 'package:sprout/gen/sprout/v1/notification.connect.client.dart';
+import 'package:sprout/gen/sprout/v1/notification.pb.dart';
 
 class ApiProfileService extends ProfileService {
-  ApiProfileService(this._client);
+  ApiProfileService(this._client, this._notes);
 
   final ApiClient _client;
+
+  /// Connect client for the bell. The rest of this service is still REST.
+  final NotificationServiceClient _notes;
 
   @override
   Future<UserProfile> currentProfile() async {
@@ -53,13 +58,10 @@ class ApiProfileService extends ProfileService {
   @override
   Future<List<PushNote>> notifications() async {
     try {
-      final data = await _client.send('GET', '/api/me/notifications');
-      return (data as List)
-          .map((item) => PushNote.fromJson(Map<String, dynamic>.from(item as Map)))
-          .toList();
-    } on AppException {
-      return const [];
+      final response = await _notes.listNotifications(ListNotificationsRequest());
+      return response.notifications.map(PushNote.fromProto).toList();
     } catch (_) {
+      // As before, the bell shows nothing rather than an error.
       return const [];
     }
   }

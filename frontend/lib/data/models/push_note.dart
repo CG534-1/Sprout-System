@@ -1,3 +1,5 @@
+import 'package:sprout/gen/sprout/v1/notification.pb.dart' as pb;
+
 class PushNote {
   const PushNote({
     required this.id,
@@ -12,6 +14,18 @@ class PushNote {
   final String body;
   final DateTime createdAt;
   final bool read;
+
+  /// From the Connect `Notification` message. An unread note arrives without
+  /// a `read` field, which the generated class reads back as false.
+  factory PushNote.fromProto(pb.Notification note) {
+    return PushNote(
+      id: note.id,
+      title: note.title,
+      body: note.body,
+      createdAt: note.createTime.toDateTime(),
+      read: note.read,
+    );
+  }
 
   factory PushNote.fromJson(Map<String, dynamic> json) {
     return PushNote(

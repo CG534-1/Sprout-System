@@ -10,11 +10,13 @@ import 'package:sprout/data/mock/mock_pet_service.dart';
 import 'package:sprout/data/mock/mock_plant_service.dart';
 import 'package:sprout/data/mock/mock_profile_service.dart';
 import 'package:sprout/data/mock/mock_store.dart';
+import 'package:sprout/data/rpc/rpc_transport.dart';
 import 'package:sprout/data/services/auth_service.dart';
 import 'package:sprout/data/services/care_service.dart';
 import 'package:sprout/data/services/pet_service.dart';
 import 'package:sprout/data/services/plant_service.dart';
 import 'package:sprout/data/services/profile_service.dart';
+import 'package:sprout/gen/sprout/v1/notification.connect.client.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AppServices {
@@ -47,10 +49,10 @@ class AppServices {
     required SupabaseClient supabase,
     required String apiBase,
   }) {
-    final client = ApiClient(
-      baseUrl: apiBase.endsWith('/') ? apiBase.substring(0, apiBase.length - 1) : apiBase,
-      token: () async => supabase.auth.currentSession?.accessToken,
-    );
+    final base = apiBase.endsWith('/') ? apiBase.substring(0, apiBase.length - 1) : apiBase;
+    Future<String?> token() async => supabase.auth.currentSession?.accessToken;
+    final client = ApiClient(baseUrl: base, token: token);
+    final rpc = createRpcTransport(baseUrl: base, token: token);
     final auth = ApiAuthService(supabase, client);
     final care = ApiCareService(client);
     return AppServices(
@@ -58,7 +60,7 @@ class AppServices {
       plants: ApiPlantService(supabase, client, onSubjectsChanged: care.dropCache),
       pets: ApiPetService(supabase, client, onSubjectsChanged: care.dropCache),
       care: care,
-      profile: ApiProfileService(client),
+      profile: ApiProfileService(client, NotificationServiceClient(rpc)),
     );
   }
 

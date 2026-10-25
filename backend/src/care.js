@@ -16,7 +16,12 @@ const INTERVAL = {
 };
 
 export function utcOffsetMinutes(req) {
-  const raw = Number(req?.headers?.['x-utc-offset-minutes'] ?? 0);
+  return offsetFromHeader(req?.headers?.['x-utc-offset-minutes']);
+}
+
+/** Reads an X-Utc-Offset-Minutes value, falling back to UTC. */
+export function offsetFromHeader(value) {
+  const raw = Number(value ?? 0);
   return Number.isFinite(raw) ? raw : 0;
 }
 
