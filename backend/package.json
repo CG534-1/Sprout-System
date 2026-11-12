@@ -17,6 +17,6 @@
     "@supabase/supabase-js": "^2.49.4",
     "cors": "^2.8.5",
     "express": "^4.21.2",
-    "firebase-admin": "^13.4.0"
+    "firebase-admin": "^14.5.0"
   }
 }
